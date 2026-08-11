@@ -1,0 +1,442 @@
+// POINT 373 IS DELIVERED BY A MEASUREMENT, not by a mechanism: "report the %/h rate
+// for the first full day after the change against today's 1.25 %/h. The point counts
+// as delivered when the rate is measured, not when the mechanism runs."
+//
+// So the aggregation has to be trustworthy, and the failure side is a number that
+// LOOKS measured: a transcript repeats one turn's usage across its streamed lines, an
+// idle night would dilute any per-hour rate to nothing, and a weighted sum invites
+// being mistaken for a bill. Each of those is pinned here.
+import { describe, it, expect } from 'vitest'
+import {
+  COST_WEIGHTS,
+  LARGE_CONTEXT_TOKENS,
+  IDLE_GAP_MS,
+  turnCost,
+  activeMs,
+  measureCost,
+  sessionProfile,
+  derivedRate,
+  projectSlug,
+  mainCheckoutOf,
+  transcriptCandidates,
+  resolveTranscriptDir,
+  LEGACY_TRANSCRIPT_SLUG,
+  transcriptScope,
+  scopedTurns,
+  measureScopes,
+  foldUsage,
+  USAGE_FIELDS,
+  SCOPE_ORDER,
+  SCOPE_LABELS,
+} from './measure-context-cost-core.mjs'
+
+const usage = (over = {}) => ({
+  input_tokens: 1000,
+  cache_creation_input_tokens: 0,
+  cache_read_input_tokens: 0,
+  output_tokens: 0,
+  ...over,
+})
+const NOW = 1_785_000_000_000
+const MIN = 60_000
+
+describe('foldUsage — the lines of ONE response do not repeat the same usage', () => {
+  // THE DEFECT THIS PINS (four-eyes review, 09.08.2026): `output_tokens` is a streamed
+  // snapshot that GROWS across the lines of one response. Taking the first line — what
+  // both measuring tools did — undercounted the measured output by 1,84×.
+  it('takes the MAXIMUM of a rising output snapshot, never the first line', () => {
+    const folded = foldUsage([usage({ output_tokens: 5 }), usage({ output_tokens: 234 }), usage({ output_tokens: 234 })])
+    expect(folded.output_tokens).toBe(234)
+  })
+
+  it('folds each counter INDEPENDENTLY, so a later-appearing one is not lost', () => {
+    const folded = foldUsage([
+      usage({ cache_read_input_tokens: 72_521, output_tokens: 5 }),
+      usage({ cache_read_input_tokens: 0, output_tokens: 900 }),
+    ])
+    expect(folded.cache_read_input_tokens).toBe(72_521)
+    expect(folded.output_tokens).toBe(900)
+  })
+
+  it('does not SUM the lines — a repeated counter is billed once', () => {
+    const folded = foldUsage([usage({ cache_read_input_tokens: 90_000 }), usage({ cache_read_input_tokens: 90_000 })])
+    expect(folded.cache_read_input_tokens).toBe(90_000)
+    expect(folded.input_tokens).toBe(1000)
+  })
+
+  it('sums the ITERATIONS of a model fallback — two billed calls under one message id', () => {
+    // The one measured case where a counter FALLS: a second API call restarts the count,
+    // and the top-level usage then shows only that call. Both were billed.
+    const folded = foldUsage([
+      usage({ cache_creation_input_tokens: 18_478, cache_read_input_tokens: 72_521, output_tokens: 3 }),
+      usage({
+        cache_creation_input_tokens: 1_820,
+        cache_read_input_tokens: 81_064,
+        output_tokens: 6_339,
+        iterations: [
+          { input_tokens: 2, cache_creation_input_tokens: 18_478, cache_read_input_tokens: 72_521, output_tokens: 1_459 },
+          { input_tokens: 2, cache_creation_input_tokens: 1_820, cache_read_input_tokens: 81_064, output_tokens: 6_339 },
+        ],
+      }),
+    ])
+    expect(folded.output_tokens).toBe(7_798)
+    expect(folded.cache_creation_input_tokens).toBe(20_298)
+    expect(folded.cache_read_input_tokens).toBe(153_585)
+  })
+
+  it('leaves a SINGLE-iteration line at its plain counters', () => {
+    const folded = foldUsage([usage({ output_tokens: 40, iterations: [{ output_tokens: 40 }] })])
+    expect(folded.output_tokens).toBe(40)
+  })
+
+  it('carries the non-counter fields of the first line and survives an empty list', () => {
+    expect(foldUsage([usage({ service_tier: 'standard' })]).service_tier).toBe('standard')
+    expect(foldUsage([])).toEqual({})
+    expect(USAGE_FIELDS).toContain('output_tokens')
+  })
+
+  it('treats a missing or negative counter as zero rather than NaN', () => {
+    const folded = foldUsage([{ output_tokens: -3 }, { input_tokens: 7 }])
+    expect(folded.output_tokens).toBe(0)
+    expect(folded.input_tokens).toBe(7)
+  })
+})
+
+describe('turnCost — the context a turn ran in, and what it weighs', () => {
+  it('adds every input kind into the CONTEXT, output excluded', () => {
+    const c = turnCost(usage({ cache_read_input_tokens: 140_000, cache_creation_input_tokens: 9_000, output_tokens: 500 }))
+    expect(c.contextTokens).toBe(150_000)
+  })
+
+  it('weights each kind by its published ratio to an input token', () => {
+    expect(turnCost(usage()).weighted).toBe(1000 * COST_WEIGHTS.input)
+    expect(turnCost(usage({ input_tokens: 0, cache_read_input_tokens: 1000 })).weighted).toBe(1000 * COST_WEIGHTS.cacheRead)
+    expect(turnCost(usage({ input_tokens: 0, cache_creation_input_tokens: 1000 })).weighted).toBe(
+      1000 * COST_WEIGHTS.cacheCreation,
+    )
+    expect(turnCost(usage({ input_tokens: 0, output_tokens: 1000 })).weighted).toBe(1000 * COST_WEIGHTS.output)
+    // A cache read is the cheap one and an output token the dear one — if that order
+    // ever inverts, the number has stopped meaning what the report says it means.
+    expect(COST_WEIGHTS.cacheRead).toBeLessThan(COST_WEIGHTS.input)
+    expect(COST_WEIGHTS.output).toBeGreaterThan(COST_WEIGHTS.cacheCreation)
+  })
+
+  it('treats missing, negative and junk fields as zero', () => {
+    expect(turnCost({}).weighted).toBe(0)
+    expect(turnCost().contextTokens).toBe(0)
+    expect(turnCost({ input_tokens: -5, output_tokens: 'lots' }).weighted).toBe(0)
+  })
+})
+
+describe('activeMs — an idle night is not work', () => {
+  it('sums the gaps between consecutive turns', () => {
+    expect(activeMs([NOW, NOW + MIN, NOW + 3 * MIN])).toBe(3 * MIN)
+  })
+
+  it('SKIPS a gap longer than the idle bound — otherwise a night halves every rate', () => {
+    expect(activeMs([NOW, NOW + MIN, NOW + 9 * 3600_000, NOW + 9 * 3600_000 + MIN])).toBe(2 * MIN)
+    expect(activeMs([NOW, NOW + IDLE_GAP_MS])).toBe(0)
+    expect(activeMs([NOW, NOW + IDLE_GAP_MS - 1])).toBe(IDLE_GAP_MS - 1)
+  })
+
+  it('is order-insensitive, and a single turn spans no time', () => {
+    expect(activeMs([NOW + 3 * MIN, NOW, NOW + MIN])).toBe(3 * MIN)
+    expect(activeMs([NOW])).toBe(0)
+    expect(activeMs([])).toBe(0)
+    expect(activeMs()).toBe(0)
+  })
+})
+
+describe('measureCost — before and after the moment the boundary first fired', () => {
+  const turns = [
+    // BEFORE: two big-context turns a minute apart.
+    { at: NOW - 10 * MIN, usage: usage({ cache_read_input_tokens: 400_000 }) },
+    { at: NOW - 9 * MIN, usage: usage({ cache_read_input_tokens: 400_000 }) },
+    // AFTER: two small-context turns a minute apart.
+    { at: NOW + MIN, usage: usage({ cache_read_input_tokens: 40_000 }) },
+    { at: NOW + 2 * MIN, usage: usage({ cache_read_input_tokens: 40_000 }) },
+  ]
+
+  it('splits at the boundary moment, not at a calendar day', () => {
+    const r = measureCost({ turns, boundaryAt: NOW })
+    expect(r.before.turns).toBe(2)
+    expect(r.after.turns).toBe(2)
+    // A turn exactly AT the boundary counts as after.
+    expect(measureCost({ turns: [{ at: NOW, usage: usage() }], boundaryAt: NOW }).after.turns).toBe(1)
+  })
+
+  it('reports the per-hour rate and the ratio between the two sides', () => {
+    const r = measureCost({ turns, boundaryAt: NOW })
+    expect(r.before.activeHours).toBe(0.02) // one minute, rounded for a report
+    expect(r.after.weightedPerHour).toBeLessThan(r.before.weightedPerHour)
+    expect(r.ratio).toBeCloseTo(r.after.weightedPerHour / r.before.weightedPerHour, 2)
+  })
+
+  it('reports the LARGE-CONTEXT share, which is the claim point 373 rests on', () => {
+    const r = measureCost({
+      turns: [
+        { at: NOW + MIN, usage: usage({ cache_read_input_tokens: LARGE_CONTEXT_TOKENS }) },
+        { at: NOW + 2 * MIN, usage: usage({ cache_read_input_tokens: 1000 }) },
+      ],
+      boundaryAt: NOW,
+    })
+    expect(r.after.largeShare).toBeGreaterThan(0.9)
+    expect(LARGE_CONTEXT_TOKENS).toBe(150_000)
+  })
+
+  it('a side with no turns reports null rather than zero — absence is not a measurement', () => {
+    const r = measureCost({ turns: [{ at: NOW + MIN, usage: usage() }], boundaryAt: NOW })
+    expect(r.before.turns).toBe(0)
+    expect(r.before.weightedPerHour).toBe(null)
+    expect(r.before.largeShare).toBe(null)
+    expect(r.ratio).toBe(null)
+  })
+
+  it('a side that spans NO active time reports null, not a division by zero', () => {
+    const r = measureCost({ turns: [{ at: NOW + MIN, usage: usage() }], boundaryAt: NOW })
+    expect(r.after.activeHours).toBe(0)
+    expect(r.after.weightedPerHour).toBe(null)
+  })
+
+  it('ignores unusable records instead of counting them as free turns', () => {
+    const r = measureCost({
+      turns: [{ at: 'later', usage: usage() }, { at: NOW + MIN, usage: {} }, null],
+      boundaryAt: NOW,
+    })
+    expect(r.after.turns).toBe(0)
+    expect(() => measureCost()).not.toThrow()
+  })
+})
+
+describe('sessionProfile — WHY the rate came out where it did', () => {
+  const t = (at, session, context) => ({ at, session, usage: usage({ cache_read_input_tokens: context }) })
+
+  it('reports each side\'s median and p90 peak context, and how many crossed the threshold', () => {
+    const p = sessionProfile({
+      turns: [
+        t(NOW - MIN, 'old-a', 600_000),
+        t(NOW - MIN, 'old-b', 700_000),
+        t(NOW + MIN, 'new-a', 100_000),
+        t(NOW + 2 * MIN, 'new-a', 200_000), // the PEAK is what counts, not the last turn
+        t(NOW + MIN, 'new-b', 90_000),
+      ],
+      boundaryAt: NOW,
+    })
+    expect(p.before.sessions).toBe(2)
+    expect(p.before.overLarge).toBe(1)
+    expect(p.after.sessions).toBe(2)
+    expect(p.after.medianPeak).toBe(201_000) // the cache read plus the turn's own input
+    expect(p.after.overLarge).toBe(0.5)
+  })
+
+  it('a turn without a session id is not a session', () => {
+    const p = sessionProfile({ turns: [{ at: NOW + MIN, usage: usage() }], boundaryAt: NOW })
+    expect(p.after.sessions).toBe(0)
+    expect(p.after.medianPeak).toBe(null)
+    expect(() => sessionProfile()).not.toThrow()
+  })
+})
+
+describe('derivedRate — the anchor is carried, never re-invented', () => {
+  it('multiplies the point\'s own 1.25 %/h by the measured ratio', () => {
+    expect(derivedRate({ ratio: 0.5 })).toEqual({ rate: 0.625, underCeiling: false })
+    expect(derivedRate({ ratio: 0.4 })).toEqual({ rate: 0.5, underCeiling: true })
+  })
+
+  it('says nothing when there is no ratio — the quota is not in the transcript', () => {
+    expect(derivedRate({ ratio: null })).toEqual({ rate: null, underCeiling: null })
+    expect(derivedRate({ ratio: 0 }).rate).toBe(null)
+    expect(derivedRate()).toEqual({ rate: null, underCeiling: null })
+  })
+
+  it('the ceiling it compares against is the one the point names', () => {
+    expect(derivedRate({ ratio: 1, anchorRatePerHour: 0.6, fits: 0.6 }).underCeiling).toBe(true)
+    expect(derivedRate({ ratio: 1.02, anchorRatePerHour: 0.6, fits: 0.6 }).underCeiling).toBe(false)
+    // The measured reality on 30.07.2026: the boundary works, and it is not enough.
+    expect(derivedRate({ ratio: 0.888 })).toEqual({ rate: 1.11, underCeiling: false })
+  })
+})
+
+// THE MISS THAT READ AS A MEASUREMENT (07.08.2026): the folder was a hard-coded
+// Windows slug, so on the Linux container the tool found nothing, printed `n/a`
+// everywhere and exited 0. What is pinned here is that the folder is DERIVED and that
+// finding none is a THROW.
+describe('projectSlug — the harness key for a checkout path', () => {
+  it('dashes every non-alphanumeric character and lowercases the drive letter', () => {
+    expect(projectSlug('C:\\Users\\Patri\\Documents\\Developing\\hoa')).toBe(LEGACY_TRANSCRIPT_SLUG)
+    expect(projectSlug('/workspace/hoa')).toBe('-workspace-hoa')
+  })
+
+  it('keeps a trailing separator as the trailing dash the harness would write', () => {
+    expect(projectSlug('/workspace/hoa/')).toBe('-workspace-hoa-')
+  })
+})
+
+describe('mainCheckoutOf — a worktree writes under the main checkout key', () => {
+  it('strips the worktree suffix, with or without a trailing slash', () => {
+    expect(mainCheckoutOf('/workspace/hoa/.claude/worktrees/agent-abc')).toBe('/workspace/hoa')
+    expect(mainCheckoutOf('/workspace/hoa/.claude/worktrees/agent-abc/')).toBe('/workspace/hoa')
+    expect(mainCheckoutOf('C:\\repo\\.claude\\worktrees\\agent-abc')).toBe('C:/repo')
+  })
+
+  it('is null for a plain checkout — there is nothing above it', () => {
+    expect(mainCheckoutOf('/workspace/hoa')).toBe(null)
+    expect(mainCheckoutOf('')).toBe(null)
+  })
+})
+
+describe('transcriptCandidates — derived, most specific first', () => {
+  const join = (a, b) => `${a}/${b}`
+
+  it('offers the checkout slug, then the legacy folder', () => {
+    expect(transcriptCandidates({ repoRoot: '/workspace/hoa', projectsDir: '/p', join })).toEqual([
+      '/p/-workspace-hoa',
+      `/p/${LEGACY_TRANSCRIPT_SLUG}`,
+    ])
+  })
+
+  it('offers a trailing-dash slug AND its stripped form — both directories exist for real', () => {
+    const got = transcriptCandidates({ repoRoot: '/workspace/hoa/', projectsDir: '/p', join })
+    expect(got.slice(0, 2)).toEqual(['/p/-workspace-hoa-', '/p/-workspace-hoa'])
+  })
+
+  it('adds the main checkout behind a worktree, and repeats no candidate', () => {
+    const got = transcriptCandidates({
+      repoRoot: '/workspace/hoa/.claude/worktrees/agent-abc/',
+      projectsDir: '/p',
+      join,
+    })
+    expect(got).toContain('/p/-workspace-hoa')
+    expect(new Set(got).size).toBe(got.length)
+  })
+})
+
+describe('resolveTranscriptDir — looks, and refuses to guess', () => {
+  it('resolves to the one candidate that HOLDS transcripts', () => {
+    const candidates = ['/p/empty', '/p/real', '/p/also-real']
+    expect(resolveTranscriptDir(candidates, (d) => d === '/p/real' || d === '/p/also-real')).toBe('/p/real')
+  })
+
+  it('THROWS when no candidate holds one, naming every path tried', () => {
+    const candidates = ['/p/a', '/p/b']
+    expect(() => resolveTranscriptDir(candidates, () => false)).toThrow(/\/p\/a[\s\S]*\/p\/b/)
+    expect(() => resolveTranscriptDir(candidates, () => false)).toThrow(/MEASURE_TRANSCRIPTS_DIR/)
+  })
+
+  it('skips a candidate that exists but holds nothing — that was the old silent zero', () => {
+    // `/p/stale` is a real directory to the probe's caller; only "holds a transcript"
+    // may decide, so the resolver walks past it to the folder that does.
+    expect(resolveTranscriptDir(['/p/stale', '/p/real'], (d) => d === '/p/real')).toBe('/p/real')
+  })
+
+  it('throws on an empty candidate list rather than returning nothing', () => {
+    expect(() => resolveTranscriptDir([], () => true)).toThrow(/no candidates/)
+  })
+})
+
+// THE SCOPE OF THE COUNT (08.08.2026). The tool read only the folder's own `*.jsonl`,
+// while on this host most transcripts are DELEGATED AGENTS' under
+// `<session>/subagents/` — spend on the same quota. A figure that leaves them out is a
+// FLOOR presented as a rate, so both scopes are reported and neither may quietly stand
+// in for the other.
+describe('transcriptScope — a delegated agent is not a session', () => {
+  it('calls a file directly in the project folder top-level', () => {
+    expect(transcriptScope('0f4d81c4.jsonl')).toBe('top-level')
+    expect(transcriptScope('./0f4d81c4.jsonl')).toBe('top-level')
+  })
+
+  it('calls anything nested a subagent transcript, on either separator', () => {
+    expect(transcriptScope('0f4d81c4/subagents/agent-a0ca9692.jsonl')).toBe('subagent')
+    expect(transcriptScope('0f4d81c4\\subagents\\agent-a0ca9692.jsonl')).toBe('subagent')
+  })
+})
+
+describe('scopedTurns — full is a SUPERSET, never a different count', () => {
+  const t = (scope) => ({ at: NOW, usage: usage(), scope })
+
+  it('keeps every turn in full and only the session ones in top-level', () => {
+    const sets = scopedTurns([t('top-level'), t('subagent'), t('subagent')])
+    expect(sets.topLevel).toHaveLength(1)
+    expect(sets.full).toHaveLength(3)
+  })
+
+  it('treats an untagged turn as top-level, so an old caller loses nothing', () => {
+    const sets = scopedTurns([{ at: NOW, usage: usage() }])
+    expect(sets.topLevel).toHaveLength(1)
+    expect(sets.full).toHaveLength(1)
+    expect(() => scopedTurns()).not.toThrow()
+    expect(scopedTurns(null).full).toEqual([])
+  })
+})
+
+describe('measureScopes — both scopes side by side, plainly labelled', () => {
+  // Two sessions' worth of turns a minute apart on each side of the boundary, plus a
+  // delegated agent working alongside the "after" session.
+  const t = (at, session, scope, context = 40_000) => ({
+    at,
+    session,
+    scope,
+    usage: usage({ cache_read_input_tokens: context }),
+  })
+  const turns = [
+    t(NOW - 10 * MIN, 'old', 'top-level', 400_000),
+    t(NOW - 9 * MIN, 'old', 'top-level', 400_000),
+    t(NOW + MIN, 'new', 'top-level'),
+    t(NOW + 2 * MIN, 'new', 'top-level'),
+    t(NOW + MIN, 'new/agent-a', 'subagent', 120_000),
+    t(NOW + 2 * MIN, 'new/agent-a', 'subagent', 160_000),
+  ]
+
+  it('reports exactly the two scopes the report names', () => {
+    const s = measureScopes({ turns, boundaryAt: NOW })
+    expect(Object.keys(s)).toEqual(SCOPE_ORDER)
+    expect(SCOPE_LABELS.topLevel).toMatch(/top-level/)
+    expect(SCOPE_LABELS.full).toMatch(/subagent/)
+  })
+
+  it('counts the delegated agents into the full scope and out of the top-level one', () => {
+    const s = measureScopes({ turns, boundaryAt: NOW })
+    expect(s.topLevel.turnsRead).toBe(4)
+    expect(s.topLevel.subagentTurns).toBe(0)
+    expect(s.full.turnsRead).toBe(6)
+    expect(s.full.subagentTurns).toBe(2)
+    // The whole reason for the second scope: the old figure is a FLOOR.
+    expect(s.full.after.weighted).toBeGreaterThan(s.topLevel.after.weighted)
+    expect(s.full.after.weightedPerHour).toBeGreaterThanOrEqual(s.topLevel.after.weightedPerHour)
+    expect(s.full.turnsRead).toBeGreaterThanOrEqual(s.topLevel.turnsRead)
+  })
+
+  it('gives each scope its own rate, sessions profile and ceiling verdict', () => {
+    const s = measureScopes({ turns, boundaryAt: NOW })
+    for (const scope of SCOPE_ORDER) {
+      expect(s[scope].rate).toBeCloseTo(1.25 * s[scope].ratio, 2)
+      expect(s[scope].underCeiling).toBe(s[scope].rate <= 0.6)
+    }
+    // A delegated agent carries the PARENT's session id in its records, so it must be
+    // its own session here — otherwise its context folds into the parent's peak.
+    expect(s.topLevel.sessions.after.sessions).toBe(1)
+    expect(s.full.sessions.after.sessions).toBe(2)
+  })
+
+  it('carries a caller-named anchor instead of re-inventing one', () => {
+    const s = measureScopes({ turns, boundaryAt: NOW, anchorRatePerHour: 1.11 })
+    expect(s.full.rate).toBeCloseTo(1.11 * s.full.ratio, 2)
+  })
+
+  it('still reports BOTH scopes when nothing was delegated — full EQUALS top-level', () => {
+    const only = turns.filter((x) => x.scope === 'top-level')
+    const s = measureScopes({ turns: only, boundaryAt: NOW })
+    expect(Object.keys(s)).toEqual(SCOPE_ORDER)
+    expect(s.full.turnsRead).toBe(s.topLevel.turnsRead)
+    expect(s.full.subagentTurns).toBe(0)
+    expect(s.full.after).toEqual(s.topLevel.after)
+    expect(s.full.rate).toBe(s.topLevel.rate)
+  })
+
+  it('reports both scopes as empty rather than throwing on no turns at all', () => {
+    const s = measureScopes({ turns: [], boundaryAt: NOW })
+    expect(s.topLevel.turnsRead).toBe(0)
+    expect(s.full.rate).toBe(null)
+    expect(() => measureScopes()).not.toThrow()
+  })
+})

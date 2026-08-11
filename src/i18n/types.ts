@@ -1,0 +1,883 @@
+// Contract for the game's language files (design.md §17: English default,
+// German, easily extensible). Every player-visible string lives here; both
+// dictionaries must implement this interface, so adding or changing a text
+// in only one language fails the build.
+
+import type { DeathCause, EquipmentId } from '../state/store'
+import type { TreasureId } from '../systems/economy'
+import type { Material, RegionId } from '../world/geo'
+import type { BuildingType } from '../state/ui'
+import type { SketchId } from '../journal/sketches'
+import type { ActorKind } from '../systems/actorLabels'
+
+/**
+ * Grammatical gender of a noun. German inflects the Ctrl layer's qualifier by
+ * it — "Toter Elefant", "Tote Giraffe", "Totes Zebra" — which is why every
+ * actor noun carries its gender instead of the label being pasted together at
+ * the render site (design.md §17.8). English ignores it.
+ */
+export type Gender = 'm' | 'f' | 'n'
+
+/** One actor noun with what its language needs in order to inflect it. */
+export interface ActorNoun {
+  /** Nominative singular, as the label shows it alone. */
+  noun: string
+  gender: Gender
+  /** The young's OWN word, where the game distinguishes an age at all —
+   *  German compounds it ("Giraffen-Jungtier"), English names the calf. */
+  young?: string
+}
+
+/** Params for journal text templates (values are ids or numbers). */
+export type TextParams = Record<string, string | number>
+
+/** Map-point kinds an undiscovered label can name (point 318). */
+export type UnknownPlaceKind =
+  | 'port'
+  | 'monument'
+  | 'village'
+  | 'mountain'
+  | 'waterfall'
+  | 'lake'
+  | 'cultural'
+  | 'natural'
+  | 'site'
+
+export interface Strings {
+  /** BCP-47-ish tag, e.g. "de", "en". */
+  lang: string
+  /** Language name shown in the debug menu selector. */
+  languageName: string
+
+  months: string[]
+  /** Full in-game date, e.g. "3. Januar 1890" / "January 3, 1890". */
+  formatDate(day: number, startYear: number): string
+  /** Compact DD.MM.YYYY for the status bar (design.md §17.1). */
+  formatDateShort(day: number, startYear: number): string
+  /** Coordinate line for the status bar. */
+  formatLatLon(lat: number, lon: number): string
+  /** Locale decimal formatting with one fraction digit. */
+  formatDecimal(value: number): string
+
+  regions: Record<RegionId, string>
+  /** Animal names used in event entries (design.md §14). */
+  animals: { lion: string; cheetah: string; leopard: string; hyena: string; snake: string; crocodile: string }
+  /**
+   * The "hold Ctrl and see what acts" layer (design.md §17.8). The composition
+   * is a pure function of (kind, age, state, language) in
+   * `systems/actorLabels.ts` — these are its parts, never a finished string.
+   */
+  actors: {
+    kinds: Record<ActorKind, ActorNoun>
+    /** Qualifier for a grown animal of a kind that also has young. */
+    adult: Record<Gender, string>
+    /** Qualifier for a carcass. */
+    dead: Record<Gender, string>
+    /** Gender of the young form's head noun (German "das Jungtier"). */
+    youngGender: Gender
+  }
+  places: Record<string, string>
+  peoples: Record<string, string>
+  landmarks: Record<string, string>
+  /**
+   * Placeholders for a map point that is still UNDISCOVERED (design.md §17.2).
+   * Kind-aware instead of a bare "?" (point 318): the traveller can tell a
+   * village from a mountain without being told which one it is. `site` is the
+   * deliberately NEUTRAL term for a point whose kind would itself be a spoiler
+   * — the elephant graveyard names no elephants before it is found.
+   */
+  unknownPlaces: Record<UnknownPlaceKind, string>
+  equipment: Record<EquipmentId, string>
+  gifts: Record<Material, string>
+  /** Treasure finds/valuables (design.md §8). */
+  treasures: Record<TreasureId, string>
+  buildings: Record<BuildingType, string>
+  sketches: Record<SketchId, string>
+
+  status: {
+    date: string
+    cash: string
+    provisions: string
+    provisionsWeeks(weeks: string): string
+    gifts: string
+    region: string
+  }
+
+  /** Health query and affliction names (design.md §6/§17). */
+  health: {
+    states: { healthy: string; weakened: string; poor: string }
+    fever: string
+    dehydration: string
+    sunblind: string
+    woundsLight: string
+    woundsSevere: string
+    /** Toast for the health query (H), e.g. "I feel weakened (fever)." */
+    report(state: string, afflictions: string[]): string
+  }
+
+  hud: {
+    journalToggle: string
+    campToggle: string
+    mapToggle: string
+    /** Tooltip for a click-to-use item (medicine/map/shovel). */
+    useTooltip: string
+    /** Tooltip for a passive item whose effect follows possession. */
+    passiveTooltip: string
+    /** Tooltip for the canteen fill reading. */
+    canteenTooltip: string
+    /** Tooltip for presenting a valuable to a village. */
+    presentTooltip: string
+    /** Shown when the renderer fell back from WebGPU to WebGL 2. */
+    webglFallback: string
+    webglFallbackDismiss: string
+    /** Frame counter label, e.g. "62 FPS". */
+    fps(fps: number): string
+    /** Label/tooltip for the bottom-left health bar (design.md §17.1). */
+    healthBar: string
+    /** Reason shown while a terrain slowdown is active (design.md §11). */
+    movementPenalty: { jungle: string; water: string; mountain: string; canoeOnLand: string }
+    /** Accessible labels for the on-screen touch controls (design.md §17.5). */
+    touch: { moveStick: string; lookArea: string }
+  }
+
+  prompts: {
+    interact(label: string): string
+    /** Near a pitched camp (design.md §6). */
+    openCamp: string
+    /** Within a settlement's enter radius (design.md §2.3): press the use key
+     *  (Space) to enter. `name` is the settlement's localized name. */
+    enterPlace(name: string): string
+  }
+
+  labels: {
+    talkToElder: string
+    oldMan: string
+    graveDebug: string
+    /** Marker label of a pitched free camp (design.md §6). */
+    camp: string
+  }
+
+  journalPanel: {
+    title: string
+    close: string
+    readAloud: string
+    stopReading: string
+    voiceLoading: string
+    voiceError: string
+    /** Tab holding the written diary entries (point 579). */
+    entries: string
+    /** Tab holding the observation section (design.md §13.4): the utterances
+     *  the player has heard, kept apart from the written entries. */
+    observations: string
+    /** Line under the heading explaining that the notes are his own. */
+    observationsHint: string
+    /** Label/placeholder of one utterance's free-text hypothesis field. */
+    hypothesis: string
+    /** Accessible label of that field, naming the utterance it belongs to. */
+    hypothesisFor(utterance: string): string
+    /** Day the utterance was first heard, shown beside it. Used for an
+     *  utterance whose place of first hearing is unknown (point 579). */
+    firstHeard(date: string): string
+    /** The same, naming the settlement it was first heard in (point 579). */
+    firstHeardIn(date: string, place: string): string
+    /** Button that reopens the chief's drum message (point 486). */
+    reopenDrumMessage: string
+  }
+
+  /** Guessing a meaning where it is spoken (design.md §13.4, point 588): the
+   *  invitation under the highlighted speaker's note, and the dialog it opens. */
+  speechGuess: {
+    /** Invitation under the note of the speaker a click would take. Never in
+     *  upper case — it is spoken to the player, not shouted at him. */
+    invite: string
+    title: string
+    /** Line above the fields: the reading is his own and nothing checks it. */
+    hint: string
+    /** Accessible label of one utterance's field, naming its syllables. */
+    readingFor(utterance: string): string
+    /** Placeholder in an empty field. */
+    notePlaceholder: string
+    save: string
+    cancel: string
+  }
+
+  /** The chief's drum message and its reopenable display (design.md §13.4,
+   *  docs/communication-poc-spec.md, point 486). */
+  drumMessage: {
+    title: string
+    /** Line above the concepts: the readings are the player's own, and editable. */
+    hint: string
+    /** Accessible label of one concept's reading field, naming its syllables. */
+    readingFor(utterance: string): string
+    /** Placeholder in a concept's reading field. */
+    notePlaceholder: string
+    close: string
+  }
+
+  mapOverlay: {
+    title: string
+    /** Continent name shown in the map's title cartouche. */
+    continent: string
+    /** Cartouche subtitle line, in the style of a period atlas plate. */
+    subtitle: string
+    /** Scale-bar caption (period atlases print "English Miles"). */
+    scaleMiles: string
+    explored(region: string, percent: number): string
+    /** Header of the settlement plan the map shows while inside a place. */
+    plan(place: string): string
+    close: string
+  }
+
+  /** Tabular load menu of all port visits (design.md §18). */
+  loadMenu: {
+    title: string
+    port: string
+    health: string
+    resume: string
+    back: string
+  }
+
+  /** F6 bug report (design.md §21.1): picture, state and description in one zip. */
+  stateDump: {
+    title: string
+    /** Save the JSON as a .json file. */
+    download: string
+    /** Save picture + state + description as one .zip (the primary action). */
+    downloadReport: string
+    /** Copy the JSON to the clipboard. */
+    copy: string
+    /** Toast confirming the JSON went to the clipboard. */
+    copied: string
+    close: string
+    /** Label above the free-text field for what went wrong. */
+    descriptionLabel: string
+    /** Placeholder inside that field. */
+    descriptionPlaceholder: string
+    /** One line under the field naming what the archive will contain. */
+    contents: string
+    /** Toast after the archive was handed to the browser. */
+    saved: string
+    /** Section headings and notes of the description file inside the archive. */
+    report: {
+      heading: string
+      description: string
+      noDescription: string
+      environment: string
+      reproduction: string
+      files: string
+      pictureNote: string
+      pictureMissing: string
+      stateNote: string
+      wildlifeNote: string
+      overlayNote: string
+      duplicateNote: string
+    }
+  }
+
+  /** In-game render benchmark (design.md §21.1, F8). */
+  benchmark: {
+    title: string
+    /** Line naming the running config, e.g. "Config 3/10: ssao-off". */
+    config: (name: string, index: number, count: number) => string
+    /** The discarded warm-up pass ahead of the sweep. */
+    warmup: string
+    /** Line naming the measured route section. */
+    phase: (name: string) => string
+    /** The three route sections (CLAUDE.md §7.1 pt. 20). */
+    phases: {
+      savannaStanding: string
+      desertStanding: string
+      savannaDriving: string
+    }
+    /** Estimated time left, `m:ss`. */
+    remaining: (time: string) => string
+    /** How to abort (Esc), with the promise that everything is restored. */
+    abortHint: string
+    doneTitle: string
+    /** Shown instead of the result when the run was aborted. */
+    abortedNote: string
+    /** Which of the three measured series is the trustworthy result here. */
+    headline: {
+      /** Real GPU timestamps were measured — the headline number. */
+      gpu: string
+      /** No GPU timestamps AND a vsync-capped wall clock: only the CPU column
+       *  carries information, and pure GPU cost is not measured at all. */
+      cpu: (reason: string) => string
+      /** No GPU timestamps, but the wall clock is not capped. */
+      wall: string
+    }
+    /** Save the report as a .json file. */
+    download: string
+    copy: string
+    /** Toast confirming the report went to the clipboard. */
+    copied: string
+    close: string
+    /** Toast when the renderer is not ready yet. */
+    unavailable: string
+    /** Toast when the run failed. */
+    failed: (message: string) => string
+    /** The point-293 LOW-preset cost ranking shown in the result panel: which
+     *  systems still dominate the frame at the low graphics level. */
+    lowProfile: {
+      /** Heading for the low-level cost ranking. */
+      title: string
+      /** "At the low graphics level the frame is dominated by: <list>." */
+      dominatedBy: (list: string) => string
+    }
+  }
+
+  toasts: {
+    oceanBlocked: string
+    /** Warning when starting to climb a mountain without a rope (design.md §11). */
+    mountainNoRopeWarn: string
+    /** First-time movement-penalty warnings for jungle/water/canoe (design.md §11). */
+    penaltyJungle: string
+    penaltyWater: string
+    penaltyCanoeLand: string
+    /** A valuable was already presented to this village (design.md §8). */
+    valuableAlreadyShown: string
+    boughtFood: string
+    bought(name: string): string
+    notEnoughMoney: string
+    digNoShovel: string
+    villagerNod: string
+    /** The chief has sent for his drummer; the message is being beaten out. */
+    drumsSending: string
+    journalDndOn: string
+    journalDndOff: string
+    /** F9 graphics quality level, named per level (design.md §21, point 276). */
+    graphicsLevel: { low: string; medium: string; high: string }
+    /** Debug F3: full loadout granted. */
+    debugLoadout: string
+    /** Debug F4: canoe added/removed. */
+    debugCanoeOn: string
+    debugCanoeOff: string
+    noMedicine: string
+    medicineNotNeeded: string
+    /** Inventory capacity reached (design.md §6). */
+    inventoryFull: string
+    /** A landmark discovery registered for the bounty (design.md §10). */
+    discovered(name: string): string
+    sold(name: string, amount: number): string
+    /** Sold a piece of gear for gifts in a village (design.md §9). */
+    soldForGifts(name: string, count: number): string
+    /** Not enough gifts to pay in a village (gifts are the local currency). */
+    notEnoughGifts: string
+    /** The bazaar refuses a regionally rejected material (design.md §10). */
+    bazaarRejected(name: string): string
+    graveyardEmpty: string
+    /** Standing gates (design.md §12). */
+    chiefHostile: string
+    regionShunned: string
+    /** Camps (design.md §6). */
+    campPitched: string
+    campNeedsFriend: string
+    /** Position query (design.md §17), e.g. via P or the gamepad. */
+    positionReport(coords: string, region: string): string
+    /** A gift unlocked the settlement orientation (design.md §17). */
+    orientationGained: string
+    /** The escape from a wedge (design.md §17.5): the hint that names the key,
+     *  and the confirmation that he stands free again. */
+    stuckHint(key: string): string
+    unstuckFreed: string
+  }
+
+  dialogs: {
+    tradeGreeting: string
+    /** Trader greeting in a native village (gifts as currency, design.md §9). */
+    tradeGreetingVillage: string
+    cash: string
+    /** Gifts on hand, the currency label in a village trade dialog. */
+    giftsHeld: string
+    /** A price expressed in gifts, e.g. "2 gifts". */
+    priceGifts(n: number): string
+    /** Sell section header and button (design.md §9). */
+    sellHeader: string
+    sell: string
+    buy: string
+    leave: string
+    foodItem: string
+    gift(name: string): string
+    audienceTitle(people: string): string
+    audienceIntro(mood: string): string
+    moodHigh: string
+    moodMid: string
+    moodLow: string
+    chiefDone: string
+    /** Ask the chief to send his message on the drums (point 486). */
+    askDrums: string
+    /** Why the chief will not send it yet — no gift has earned his trust. */
+    askDrumsLocked: string
+    /** What the traveller carries back from the boulder (point 487). */
+    artefactCarried: string
+    /** Lay it in the chief's hands — the hand-over that solves the puzzle. */
+    handArtefact: string
+    /** Introduces the chief's answer, which stays in HIS tongue: never a
+     *  translation, only the note the player wrote for each utterance. Written
+     *  in the past tense — the answer stays standing in the audience as a
+     *  record, so a re-opened dialog must not read as if he said it again. */
+    chiefAcknowledges: string
+    give: string
+    stock(n: number): string
+    endAudience: string
+    /** Draw the rifle and rob the hut (design.md §12). */
+    rob: string
+    /** Safety confirmation before the robbery, and its yes/cancel labels. */
+    robConfirm: string
+    robConfirmYes: string
+    robCancel: string
+    robOrphansGoal: string
+    /** Bazaar (design.md §10): bid flow on offered treasures. */
+    bazaarGreeting: string
+    bazaarSell: string
+    bazaarBuy: string
+    offer: string
+    bid(name: string, amount: number): string
+    accept: string
+    decline: string
+    /** Travel agency (design.md §10): ferry passages between ports. */
+    agencyGreeting: string
+    passage(dest: string, days: number): string
+    book: string
+    /** Camp caches (design.md §6). */
+    campTitle: string
+    villageCampTitle: string
+    campHint: string
+    villageCampHint: string
+    campPack: string
+    campContents: string
+    campEmpty: string
+    campStore: string
+    campTake: string
+  }
+
+  overlays: {
+    title: string
+    victoryText(days: number): string
+    /** Report about the explorer's remains (design.md §15). */
+    remainsReport(cause: string, days: number): string
+    deathCauses: Record<DeathCause, string>
+    deadlineExpired(days: number): string
+    /** Button: a successor takes over from the last checkpoint (§18). */
+    successor: string
+    newExpedition: string
+    checkpointFound: string
+    loadCheckpoint: string
+  }
+
+  debug: {
+    title: string
+    /** Filter row at the top of the menu (design.md §21.3): its label, the
+     *  field's hint and the note shown when nothing matches. */
+    filter: string
+    filterHint: string
+    filterEmpty: string
+    /** Names of the collapsible control groups (design.md §21.3). */
+    groups: {
+      movement: string
+      travel: string
+      survival: string
+      wildlife: string
+      settlement: string
+      weather: string
+      economy: string
+      events: string
+      graphics: string
+      jump: string
+      tools: string
+    }
+    /** Read-only display of the active render backend (WebGPU/WebGL 2). */
+    renderer: string
+    language: string
+    travelSpeed: string
+    walkSpeed: string
+    strafeFactor: string
+    walkerUnstuck: string
+    placeCollisionFactor: string
+    startupFreezeBudget: string
+    /** Cap on the name labels of the hold layer (design.md §17.8). */
+    labelOverlayMax: string
+    mouseSensitivity: string
+    lookPitchLimit: string
+    /** The escape from a wedge (work-order 604). */
+    unstuckStallDistance: string
+    unstuckStallSeconds: string
+    unstuckSearchRadius: string
+    unstuckSearchStep: string
+    invertLook: string
+    /** The rebindable hold key of design.md §17.8 (work-order 601) and its options. */
+    labelModifier: string
+    labelModifierCtrl: string
+    labelModifierShift: string
+    labelModifierAlt: string
+    ambienceVolume: string
+    footstepVolume: string
+    ambientVolume: string
+    birdsongVolume: string
+    speechVolume: string
+    surfNearRadius: string
+    surfCutoff: string
+    /** Village speech: pace, phrase pause and how far an utterance carries (§13.4). */
+    speechSyllable: string
+    speechPhrasePause: string
+    speechHearingRadius: string
+    speechHearingFalloff: string
+    speechLabelSeconds: string
+    speechPitch: string
+    speechPitchInterval: string
+    speechLabelHeadroom: string
+    speechConceptLabels: string
+    /** The children's game of tag (design.md §19.10, point 480/351). */
+    tagChildCount: string
+    tagSprintSpeed: string
+    tagRunnerBoost: string
+    tagTrotFactor: string
+    tagRecoverFactor: string
+    tagFloorFactor: string
+    tagDrain: string
+    tagRecover: string
+    tagBreakOff: string
+    tagResume: string
+    tagPressure: string
+    tagReach: string
+    tagCommit: string
+    tagCatch: string
+    tagSwitchMargin: string
+    tagImmunity: string
+    tagResolveCap: string
+    tagIdle: string
+    tagTrendTau: string
+    tagTrendEnter: string
+    tagTrendLeave: string
+    tagVariation: string
+    tagUnstuck: string
+    tagLean: string
+    tagTurnRate: string
+    tagPlayRadius: string
+    childSpeechInterval: string
+    childSpeechSpread: string
+    childSpeechAction: string
+    childSpeechPace: string
+    childSpeechRefusal: string
+    childSpeechReply: string
+    adultErrandInterval: string
+    adultErrandSpread: string
+    adultErrandDwell: string
+    adultErrandDig: string
+    adultErrandLife: string
+    adultErrandStall: string
+    adultErrandSilence: string
+    adultErrandPace: string
+    adultErrandCount: string
+    separationRadius: string
+    separationSlop: string
+    separationStiffness: string
+    separationSpeed: string
+    separationWedge: string
+    foodPerDay: string
+    canteenDrain: string
+    canteenDesertDrain: string
+    canteenCapacity: string
+    /** Natural wound-healing durations (design.md §6/§21). */
+    woundHealLight: string
+    woundHealSevere: string
+    daysPerUnit: string
+    canoeSpeedup: string
+    junglePenalty: string
+    riverWidthFactor: string
+    riverMouthSlackDeg: string
+    drownSeconds: string
+    wetFlowFactor: string
+    vigilPredatorDelay: string
+    rescueBurst: string
+    calfFraction: string
+    calfFollowRadius: string
+    calfGambolRange: string
+    calfGambolBout: string
+    crocStrikeRadius: string
+    crocAmbushBankBand: string
+    crocMouthOffset: string
+    juvenilePreyBias: string
+    juvenileDrinkCrocBias: string
+    calfAdoptionRadius: string
+    calfEscapeSeconds: string
+    calfReunionSeconds: string
+    calfMourningSeconds: string
+    /** Intraspecies combat (design.md §19.17, point 264). */
+    fightDispositionRate: string
+    fightDispositionInterval: string
+    fightSeekRadius: string
+    fightContactRadius: string
+    fightDriveOffDistance: string
+    fightApproachSeconds: string
+    fightClashSeconds: string
+    fightClashIntensity: string
+    fightApproachBurst: string
+    fightQuarryFleeFactor: string
+    fightLethalityScale: string
+    fightCooldownSeconds: string
+    benchmarkStart: string
+    crocDragSpeed: string
+    crocDragSeconds: string
+    crocGripSeconds: string
+    crocDriveOffRest: string
+    huntLeaveOvertime: string
+    waterCrossMax: string
+    waterCrossChance: string
+    seasonStrength: string
+    wetGroundStrength: string
+    edgeBandWidth: string
+    edgeBandWander: string
+    edgeBandStrength: string
+    bankWadeDepth: string
+    bloodStainSize: string
+    bloodStainIrregularity: string
+    season: string
+    seasonAuto: string
+    seasonDry: string
+    seasonMid: string
+    seasonWet: string
+    mountainPenalty: string
+    foodUnitDays: string
+    oceanSwimMargin: string
+    digRadius: string
+    goodwillForHint: string
+    randomEvents: string
+    triggerEvent: string
+    eventNames: Record<string, string>
+    /** Label of the event-trigger dropdown (design.md §21.3, point 258). */
+    stageEvent: string
+    /** optgroup labels of the event-trigger dropdown. */
+    stageGroups: {
+      wildlife: string
+      random: string
+      hazards: string
+    }
+    /** Names of the stageable §19.8/§19.16 wildlife dramas. */
+    dramaNames: Record<string, string>
+    /** Names of the stageable §11 traveller hazards. */
+    hazardNames: Record<string, string>
+    /** Toasts for a trigger whose precondition cannot be met near the traveller. */
+    stageFailures: Record<string, string>
+    showHidden: string
+    fpsCounter: string
+    /** TRAA toggle (design.md §2.7/§21), default on. */
+    traa: string
+    /** SSAO toggle (design.md §2.7); off in the touch quality preset (point 84). */
+    ssao: string
+    /** Half-size shadow maps toggle; on in the touch quality preset (point 84). */
+    shadowMapHalf: string
+    shadows: string
+    /** Graphics quality level picker + option labels (design.md §21, F9 /
+     *  point 276). */
+    detailLevel: string
+    detailLow: string
+    detailMedium: string
+    detailHigh: string
+    /** Campfire cube-shadow toggle (design.md §19.10). */
+    fireShadows: string
+    flatGround: string
+    /** Debug toggle for the dry-season flora deformation (point 175), default on. */
+    foliageCollapse: string
+    health: string
+    wheelZoom: string
+    journalDnd: string
+    cash: string
+    foodDays: string
+    jumpTo: string
+    /** optgroup labels of the jump-to dropdown (design.md §21.3). */
+    jumpGroups: {
+      ports: string
+      villages: string
+      monuments: string
+      mountains: string
+      waterfalls: string
+      lakes: string
+      cultural: string
+      natural: string
+      other: string
+    }
+    /** Placeholder entry of the debug dropdowns. */
+    choose: string
+    grave: string
+    addEquipment: string
+    addGift: string
+    addTreasure: string
+    giftsTotal: string
+    inventoryCapacity: string
+  }
+
+  /**
+   * Journal entry templates, addressed by key from stored TextRefs so that
+   * entries re-render in the currently selected language. Bodies carry the
+   * emotional voice markup (src/journal/voiceMarkup.ts, design.md §15) in
+   * every language; it is stripped for display and drives the read-aloud.
+   */
+  journal: {
+    titles: {
+      departure: string
+      region(p: TextParams): string
+      arrival(p: TextParams): string
+      /** Re-entering a port whose situation changed (design.md §16, pt. 394). */
+      portReturn(p: TextParams): string
+      village(p: TextParams): string
+      villageReturn(p: TextParams): string
+      /** Arrival at a walkable monument site, and a changed return (§16). */
+      monument(p: TextParams): string
+      monumentReturn(p: TextParams): string
+      audience: string
+      mistake: string
+      chiefHint: string
+      /** The chief's drum message (design.md §13.4, point 486). */
+      drumMessage: string
+      /** Dug up at the foot of the landmark boulder (point 487). */
+      rockArtefact: string
+      /** The artefact laid in the chief's hands — the puzzle solved (point 487). */
+      artefactGiven: string
+      decoded: string
+      unspecific: string
+      giftLore: string
+      language(p: TextParams): string
+      victory: string
+      foodLow: string
+      foodOut: string
+      dehydration: string
+      recovery: string
+      healthPoor: string
+      attack: string
+      robbery: string
+      fever: string
+      sunblind: string
+      sandstorm: string
+      sweptAway: string
+      /** Warning entry on climbing a mountain without a rope (design.md §11). */
+      mountainClimb: string
+      /** First-time movement-penalty warnings (design.md §11). */
+      penaltyJungle: string
+      penaltyWater: string
+      penaltyCanoeLand: string
+      /** First-time danger warnings with protection advice (design.md §14). */
+      dangerUnarmed: string
+      dangerDesert: string
+      dangerWater: string
+      dangerWetland: string
+      /** A fall while climbing without a rope (design.md §11). */
+      mountainFall: string
+      /** Sighting a landmark for the first time (design.md §10/§16):
+       *  a kind-specific heading naming the landmark ("A Discovery" was
+       *  too generic, user feedback). */
+      landmarkDiscovered(p: TextParams): string
+      discovery: string
+      deadline1: string
+      deadline2: string
+      successor: string
+      /** Digging a find: names the treasure, or the graveyard-ivory case. */
+      treasure(p: TextParams): string
+      bounty: string
+      ferry: string
+      valuableReaction: string
+      friend: string
+      rescue: string
+      friendSupplies: string
+      robberyCommitted: string
+      campLooted: string
+    }
+    start: string
+    regionEntry(p: TextParams): string
+    /** Every re-entry into a port: the checkpoint notice (design.md §18). */
+    portArrival(p: TextParams): string
+    /**
+     * Arrival texts of the walkable places (design.md §16, point 394). Each
+     * place has its own — what the traveller sees on arriving at THAT place in
+     * ~1890 — and the return variants describe ONLY what has changed since the
+     * place was last journaled, chosen by its `../systems/placeSituation` key.
+     */
+    portFirstVisit(p: TextParams): string
+    portReturn(p: TextParams): string
+    monumentFirstVisit(p: TextParams): string
+    monumentReturn(p: TextParams): string
+    villageFirstVisit(p: TextParams): string
+    villageReturn(p: TextParams): string
+    giftRevered(p: TextParams): string
+    giftNeutral: string
+    giftRejected(p: TextParams): string
+    /** Elder lesson on the region's direction system (design.md §13.2). */
+    languageLesson(p: TextParams): string
+    /** Raw location hint in the region's own words (design.md §13.1/13.3). */
+    hintRaw(p: TextParams): string
+    /** Deciphered version once the language is learned. */
+    hintDecoded(p: TextParams): string
+    /** Unspecific knowledge pointing to the knowing people (§13.3). */
+    unspecific(p: TextParams): string
+    /** What the region reveres (design.md §8), told by an elder. */
+    giftLore(p: TextParams): string
+    /** The chief's drums beat his message out (design.md §13.4, point 486). */
+    drumMessage: string
+    /** The dig at the boulder the drum message sends the traveller to (point 487). */
+    rockArtefact: string
+    /** Handing the artefact to the chief — what solves the puzzle (point 487). */
+    artefactGiven: string
+    digNothing: string
+    victory(p: TextParams): string
+    foodLow: string
+    foodOut: string
+    dehydrationOn: string
+    dehydrationOver: string
+    sunblindOver: string
+    /** Natural wound healing without medicine (design.md §6). */
+    woundHealed: string
+    woundEased: string
+    medicineUsed: string
+    healthPoor: string
+    animalAttack(p: TextParams): string
+    robbery(p: TextParams): string
+    feverOn: string
+    sunblindOn: string
+    sandstorm: string
+    sweptAway: string
+    /** Climbing a mountain without a rope: warning and the fall (design.md §11). */
+    mountainNoRope: string
+    /** First-time movement-penalty warnings for jungle/water/canoe (design.md §11). */
+    penaltyJungle: string
+    penaltyWater: string
+    penaltyCanoeLand: string
+    /** First-time danger warnings with protection advice (design.md §14). */
+    dangerUnarmed: string
+    dangerDesert: string
+    dangerWater: string
+    /** Water-warning variant when a canoe is already in the pack: it
+     *  acknowledges the protection instead of advising it (design.md §14). */
+    dangerWaterCanoe: string
+    dangerWetland: string
+    mountainFall: string
+    mountainFallItem: string
+    /** First sighting of a landmark (design.md §10/§16): the journal announces
+     *  the discovery, flavored by its kind (mountain/falls/lake/grave). */
+    landmarkDiscovered(p: TextParams): string
+    findRemains(p: TextParams): string
+    deadline1: string
+    deadline2: string
+    successor: string
+    /** A buried treasure cache dug up (design.md §8/§18). */
+    treasureFound(p: TextParams): string
+    /** Ivory recovered at the elephant graveyard, a random haul (design.md §4.4). */
+    ivoryFound(p: TextParams): string
+    /** Discovery bounties credited at a port (design.md §10). */
+    bounty(p: TextParams): string
+    /** Ferry passage between two ports (design.md §10). */
+    ferry(p: TextParams): string
+    /** Reactions to a visibly carried valuable (design.md §8). */
+    valuableRevered(p: TextParams): string
+    valuableRejected(p: TextParams): string
+    /** "Honored Friend" (design.md §12): pledge, rescues, aid, supplies. */
+    friendPledge(p: TextParams): string
+    friendRescue(p: TextParams): string
+    friendRescueRobbers(p: TextParams): string
+    friendAid(p: TextParams): string
+    friendSupplies(p: TextParams): string
+    /** A hut robbery at rifle point (design.md §12). */
+    robberyCommitted(p: TextParams): string
+    /** A looted free camp, discovered on return (design.md §6). */
+    campLooted: string
+  }
+}

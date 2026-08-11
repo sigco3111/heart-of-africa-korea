@@ -1,0 +1,227 @@
+// The season's straw/green recolour of the flora and ground (design.md §19.13).
+// A shared module rather than living in TravelScene, so the settlement scene can
+// tint its own ground and flora with the SAME curve (point 143) — writing a
+// second one would drift, and the acacia-crown mask below was hard-won.
+//
+// A module-level uniform, in the mould of skyOvercast: both scenes drive it per
+// frame from their OWN greenness and only ever one renders. It is a uniform,
+// not a fresh material, so it does not trip point 96's program-relink cost.
+
+import { attribute, float, mix, positionLocal, uniform, vec3 } from 'three/tsl'
+import type { vertexColor } from 'three/tsl'
+
+// 0.5 = the untouched mid-year colour, 0 = full straw (dry), 1 = full green
+// (lush). Deserts stay neutral on their own: their greenness is ~0 year round.
+export const SEASON_TINT_U = uniform(0.5)
+
+/** Set this frame's season tint (from `effectiveGreenness`, 0..1). */
+export function setSeasonTint(greenness: number, strength: number) {
+  const g = Math.min(1, Math.max(0, greenness))
+  const s = Math.min(1, Math.max(0, strength))
+  SEASON_TINT_U.value = 0.5 + (g - 0.5) * s
+}
+
+// Ground wetness (design.md §19.13, point 225): 0 dry .. 1 soaked. BOTH ground
+// materials — the travel terrain and the settlement ground — read THIS uniform,
+// driven per frame by whichever scene renders (only ever one does), exactly like
+// SEASON_TINT_U above: a module uniform, not a fresh material, so it never trips
+// point 96's program relink.
+export const GROUND_WET_U = uniform(0)
+
+/** Set this frame's ground wetness (from `groundWetnessFactor`, 0..1). */
+export function setGroundWetness(w: number) {
+  GROUND_WET_U.value = Math.min(1, Math.max(0, w))
+}
+
+// The wet look, shared by both ground materials so the two can never drift: wet
+// earth DARKENS and turns GLOSSIER (lower roughness), which lets the existing
+// micro-relief normals catch a specular sheen — the "wet after rain" read
+// without a second render pass. The typings on a colour/roughness node are
+// narrower than the runtime (the same gap materials.ts bridges with `unknown`).
+
+/** Darken a ground albedo node toward damp as it soaks (point 225). */
+export function wetGroundColor(col: unknown) {
+  return (col as ReturnType<typeof float>).mul(
+    float(1).sub((GROUND_WET_U as unknown as ReturnType<typeof float>).mul(0.4)),
+  )
+}
+
+/** Lower a ground roughness node toward a wet sheen as it soaks (point 225). */
+export function wetGroundRoughness(rough: unknown) {
+  return (rough as ReturnType<typeof float>).mul(
+    float(1).sub((GROUND_WET_U as unknown as ReturnType<typeof float>).mul(0.55)),
+  )
+}
+
+// Debug diagnostic (point 175): gates the dry-season flora DEFORMATION — the
+// crown bare-branch collapse AND the ground-flora sprout — live via a uniform,
+// so it toggles without a program relink (the point 96 rule). 1 = on (default),
+// 0 = off (the flora keeps its full positionLocal shape; the season COLOUR is
+// untouched). Its purpose is to isolate whether this per-instance vertex
+// deformation is the cause of a WebGPU-only flora jump — the deformation and
+// the season colour can then be judged apart.
+export const SEASON_COLLAPSE_U = uniform(1)
+
+/** Debug: enable/disable the dry-season flora deformation (point 175). */
+export function setSeasonCollapse(on: boolean) {
+  SEASON_COLLAPSE_U.value = on ? 1 : 0
+}
+
+// CPU mirrors of the seasonFoliagePosition maths (point 175). The travel scene
+// bakes the dry-season deformation into its INSTANCE MATRICES on the CPU — the
+// WebGPU-stable transform path — rather than the per-instance-attribute
+// positionNode below, which raced its rebuild re-upload on WebGPU. These three
+// are the SAME formulas as the shader branch, kept in lock-step (pure-tested):
+// a change here must change seasonFoliagePosition identically.
+
+/** dryness from a season-field tint (0.5 neutral, 0 dry): 1 - tint*2, clamped. */
+export function drynessFromTint(tint: number): number {
+  return Math.min(1, Math.max(0, 1 - tint * 2))
+}
+
+/**
+ * Crown collapse for the travel crown mesh's instance matrix: the crown shrinks
+ * in x/z toward the trunk axis and drops in y (bare branches, point 144). Mirror
+ * of seasonFoliagePosition's crown branch (crownK = 1): shrink = 1-dryness*0.6,
+ * drop = dryness*0.22. Fold into the matrix as Scale(shrink,1,shrink) then a
+ * y-translation of -drop.
+ */
+export function crownCollapse(dryness: number): { shrink: number; drop: number } {
+  const d = Math.min(1, Math.max(0, dryness))
+  return { shrink: 1 - d * 0.6, drop: d * 0.22 }
+}
+
+/**
+ * Ground-flora sprout scale for foliage class 2 (bush, papyrus): a uniform
+ * withdraw toward the soil, folded into the plant matrix scale. Mirror of
+ * seasonFoliagePosition's sprout (sproutK = 1): 1 - dryness*0.85.
+ */
+export function groundSprout(dryness: number): number {
+  const d = Math.min(1, Math.max(0, dryness))
+  return 1 - d * 0.85
+}
+
+/**
+ * The flora material's brightness lift (point 206): the ground multiplies its
+ * albedo by 2.6 while the vertex-coloured flora never got a matching lift, so
+ * crowns read as near-black silhouettes. Both scenes (travel + settlement)
+ * multiply their flora colorNode by THIS constant — shared so the pure
+ * luminance floor in flora.test.ts gates the same number the shaders use.
+ */
+export const FLORA_COLOR_LIFT = 1.9
+
+/**
+ * CPU mirror of seasonTintNode below (the collapse-mirror pattern above): the
+ * SAME formulas, kept in lock-step — a change here must change seasonTintNode
+ * identically. Exists so the crown-colour luminance floor (point 206,
+ * flora.test.ts) can evaluate the shader's recolour purely, without a renderer.
+ * `c` is a LINEAR-space rgb triple (what vertexColor() carries), `tint` the
+ * field value (0 straw, 0.5 neutral, 1 lush).
+ */
+export function seasonTintCpu(
+  c: [number, number, number],
+  tint: number,
+): [number, number, number] {
+  const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
+  const [r, g, b] = c
+  const greenness = clamp01((g - b) * 2.5) * clamp01(1 - (r - g) * 4)
+  const luma = r * 0.35 + g * 0.5 + b * 0.15
+  const straw: [number, number, number] = [luma * 2.15, luma * 1.75, luma * 0.4]
+  const lush: [number, number, number] = [luma * 0.28, luma * 1.5, luma * 0.3]
+  const dryK = clamp01(1 - tint * 2)
+  const lushK = clamp01(tint * 2 - 1)
+  const mix = (a: number, o: number, t: number) => a + (o - a) * t
+  const dried = [
+    mix(r, straw[0], greenness * dryK),
+    mix(g, straw[1], greenness * dryK),
+    mix(b, straw[2], greenness * dryK),
+  ]
+  return [
+    mix(dried[0], lush[0], greenness * lushK),
+    mix(dried[1], lush[1], greenness * lushK),
+    mix(dried[2], lush[2], greenness * lushK),
+  ]
+}
+
+/**
+ * Recolour a base colour toward straw (dry) or deep green (lush), leaving
+ * everything that is not foliage alone.
+ *
+ * Note the greenness mask: the obvious `g > max(r, b)` test misses the savanna
+ * acacia outright — its crown is OLIVE (#6e7c2f, r ≈ g), the single most visible
+ * tree in the game — so it keys on green-over-blue AND not-red-heavy instead.
+ *
+ * Both ends are REAL recolours off the luma, symmetric about the untouched
+ * mid-year `c`. They were not once: straw recoloured hard while lush was a
+ * multiplicative nudge, so the rains only DIMMED the scene and never shifted its
+ * hue (measured: the Sahel's ground green excess moved 41 -> 45 across its whole
+ * year). Keep both ends luma-keyed.
+ *
+ * seasonTintCpu above is this node's CPU mirror (point 206) — any change here
+ * must change it identically.
+ */
+export function seasonTintNode(
+  c: ReturnType<typeof vertexColor>['rgb'],
+  // The tint source: the shared uniform (settlement scene — one place, one
+  // greenness) or the travel scene's per-position season field (point 151).
+  tint: ReturnType<typeof float> = SEASON_TINT_U as unknown as ReturnType<typeof float>,
+) {
+  const greenness = c.g.sub(c.b).mul(2.5).clamp(0, 1).mul(
+    float(1).sub(c.r.sub(c.g).mul(4)).clamp(0, 1),
+  )
+  const luma = c.r.mul(0.35).add(c.g.mul(0.5)).add(c.b.mul(0.15))
+  // Deliberately EXAGGERATED per design.md §19.13's licence (point 144): a
+  // near-white bleached straw against a deep saturated green, so the season
+  // reads at a glance rather than as a subtle shift. The restrained pair
+  // (straw 1.9/1.55/0.6, lush 0.5/1.25/0.45) moved the Sahel's on-screen green
+  // excess only 41->51 across its whole year — a fact the player could not see.
+  const straw = vec3(luma.mul(2.15), luma.mul(1.75), luma.mul(0.4))
+  const lush = vec3(luma.mul(0.28), luma.mul(1.5), luma.mul(0.3))
+  const dryK = float(1).sub(tint.mul(2)).clamp(0, 1)
+  const lushK = tint.mul(2).sub(1).clamp(0, 1)
+  return mix(mix(c, straw, greenness.mul(dryK)), lush, greenness.mul(lushK))
+}
+
+/**
+ * Bare branches, second attempt (point 144): in the dry season the foliage
+ * collapses toward the trunk and settles down onto it, while the trunk stands.
+ *
+ * The first attempt derived the mask from the per-vertex COLOUR — which
+ * jitters by design — so neighbouring vertices of one crown collapsed by
+ * different amounts and the trees tore into the screen-wide shards of the
+ * 16.07 critical bug. This one reads the baked, per-part-uniform, BINARY
+ * `foliage` attribute (flora.ts): every vertex of a part carries the same
+ * value by construction, the part moves as one, and nothing can tear.
+ *
+ * Zone-correctness is free, as before: the collapse scales with the tint
+ * uniform's DRYNESS, which only falls below neutral in a zone that has a dry
+ * season — the Congo's evergreen trees stay full because their uniform never
+ * leaves neutral.
+ */
+export function seasonFoliagePosition(
+  tint: ReturnType<typeof float> = SEASON_TINT_U as unknown as ReturnType<typeof float>,
+) {
+  // Cast: the TSL typings do not carry the attribute's float type through.
+  const leaf = attribute('foliage', 'float') as unknown as ReturnType<typeof float>
+  // Both the crown collapse and the ground sprout derive from `dryness`, so the
+  // debug gate multiplies it once here: SEASON_COLLAPSE_U 0 -> dryness 0 ->
+  // shrink/sprout 1 and no y-drop, i.e. the flora keeps its full shape (point 175).
+  const dryness = float(1).sub(tint.mul(2)).clamp(0, 1).mul(SEASON_COLLAPSE_U)
+  // Two foliage classes (both per-part-uniform, the 144 shard rule):
+  // 1 = a tree crown — bare branches: it shrinks toward the trunk and
+  //     settles down onto it, the trunk stands (the 144 look, unchanged);
+  // 2 = ground flora (bush, grass, papyrus) — anchored at y = 0 and scaled
+  //     toward the ground, so its seasonal appearance reads as SPROUTING
+  //     from the soil rather than floating in (user request, point 151).
+  const crownK = leaf.clamp(0, 1).mul(float(2).sub(leaf).clamp(0, 1))
+  const sproutK = leaf.sub(1).clamp(0, 1)
+  const collapse = crownK.mul(dryness)
+  const p = positionLocal
+  const shrink = float(1).sub(collapse.mul(0.6))
+  const sprout = float(1).sub(sproutK.mul(dryness).mul(0.85))
+  return vec3(
+    p.x.mul(shrink).mul(sprout),
+    p.y.sub(collapse.mul(0.22)).mul(sprout),
+    p.z.mul(shrink).mul(sprout),
+  )
+}

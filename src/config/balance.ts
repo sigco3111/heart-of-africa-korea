@@ -1,0 +1,1297 @@
+// Central balance configuration (CLAUDE.md §2).
+// All values below are calibratable educated guesses unless design.md fixes
+// them explicitly (e.g. starting money 250 $, start year 1890). The debug
+// menu (F1) exposes them at runtime for fine-tuning.
+
+import type { Material } from '../world/geo'
+import type { EquipmentId } from '../state/store'
+
+export interface BalanceConfig {
+  /** Travel speed on the continent map, world units per second (1 unit = 0.1 degree). */
+  travelSpeed: number
+  /** Walking speed inside places (first-person), meters per second. */
+  placeWalkSpeed: number
+  /** Speed factor for strafing and walking backward inside places (design.md §2). */
+  placeStrafeFactor: number
+  /** Seconds an inhabitant may be physically pinned (no real movement while it
+   *  has a walk target) before it is teleport-nudged to the nearest free spot
+   *  (point 155) — a small invisible correction, inhabitants only. */
+  walkerUnstuckSeconds: number
+  /** The PLAYER's own escape from a wedge (work-order 604): the key frees him,
+   *  the detection only tells him the key exists. The lengths are calibrated for
+   *  the walking scale of a settlement; the bird's-eye view scales them by the
+   *  ratio of its own travel speed, so "half a step of progress" means the same
+   *  thing on the continent map. */
+  unstuck: {
+    /** How far he must get from where the stall began before that counts as
+     *  movement, in metres. */
+    stallDistance: number
+    /** Seconds of HELD movement input without that progress before the hint shows. */
+    stallSeconds: number
+    /** How far the outward search for free ground looks, in metres. */
+    searchRadius: number
+    /** Ring spacing of that search, in metres. */
+    searchStep: number
+  }
+  /** How deep the traveller wades into a settlement's river before he is out of
+   *  his depth, in metres (work-order 584). It is the settlement's walkable
+   *  region ON the water: he walks down the drawn shore this far, and past it
+   *  the boundary ends and the bird's-eye view — where the river is swum and the
+   *  current carries him — takes over. Nothing ever HOLDS him at the water. */
+  bankWadeDepth: number
+  /** The settlement edge painted on the ground (design.md §2.6, point 352/488):
+   *  where the swept, trodden ground gives way to open land. The band's PLACE is
+   *  never configured — it sits at the boundary the leave check reads
+   *  (`src/scenes/place/boundary.ts`); only its look is calibratable. */
+  placeEdgeBand: {
+    /** How wide the give-way reads, in metres (the full ramp, centred on the boundary). */
+    widthM: number
+    /** How far the outline may meander off the true boundary, in metres. Hard-capped
+     *  by `EDGE_BAND_MAX_WANDER_M`: it may look natural, it may not mislead. */
+    wanderM: number
+    /** Master strength of the whole edge, 0 (invisible) .. 1 (the full per-kind look). */
+    strength: number
+  }
+  /** The blood a kill or a trample soaks into the ground (design.md §19.5,
+   *  points 267/323): how big the patch reads and how ragged its outline runs. */
+  bloodStain: {
+    /** Size factor on every patch's radius (1 = the base ~0.9 m kill patch). */
+    sizeScale: number
+    /** How far the seeded outline swings off that radius, as a fraction of it:
+     *  0 draws a machined circle, 0.25 a clearly ragged one. Hard-capped by
+     *  `STAIN_MAX_IRREGULARITY` so the contour can never fold through itself. */
+    irregularity: number
+  }
+  /** Mouse-look sensitivity in the first-person view, radians per pixel. */
+  mouseSensitivity: number
+  /** Vertical first-person look clamp in DEGREES from the horizon (design.md
+   *  §17.5, point 392): how far up and down the view may pitch. Calibratable,
+   *  but structurally capped just short of vertical (`PITCH_LIMIT_CEILING_DEG`
+   *  in src/systems/lookPitch.ts) so the world can never roll over. */
+  lookPitchLimitDeg: number
+  /** Single ambience volume: the noise beds (wind/surf/murmur), their gust/swell
+   *  modulation and the proximity animal calls are all scaled by it (1 = full). */
+  ambienceVolume: number
+  /** Relative loudness of footsteps under the master ambience volume (user
+   *  request: footsteps twice as loud as the rest). */
+  footstepVolume: number
+  /** Relative loudness of every NON-footstep ambient sound (beds, calls, the
+   *  interaction chime/"ding-dong") under the master ambience volume (user
+   *  request: half as loud as before). */
+  ambientVolume: number
+  /** Per-source multiplier on the birdsong voice (point 153): a debug-editable
+   *  slider over the single ambience volume, so the birds can be turned down on
+   *  their own. 1 = the design gain, 0 = silent. */
+  birdsongVolume: number
+  /** Coastal surf fade (point 153, design.md §19.1): the ocean-surf bed is only
+   *  audible near the coast — full within `nearRadius`, silent at/beyond
+   *  `cutoff`, smooth between, keyed on the distance to the nearest coast in
+   *  degrees. Calibratable by ear at the debug travel speed. */
+  surf: {
+    nearRadius: number
+    cutoff: number
+  }
+  /** In-game days that pass per world unit traveled on the map. */
+  daysPerUnit: number
+  /** Provisions consumed per in-game day (1.0 = one day's ration). */
+  foodPerDay: number
+  /** Days of provisions one purchased food unit grants (design.md §9). */
+  foodUnitDays: number
+  /** Base terrain time-cost multipliers (more days per unit in rough terrain).
+   *  jungle/mountain are the costs with the relieving item carried; water is the
+   *  cost while swimming (no canoe). The penalty/speed-up factors below modify
+   *  them by whether the relieving item is in the pack (possession-based). */
+  terrainCost: {
+    desert: number
+    savanna: number
+    jungle: number
+    mountain: number
+    water: number
+  }
+  /** Jungle without a machete is this much slower than with one (design.md §11). */
+  junglePenalty: number
+  /** Mountain without a rope is this much slower than with one (design.md §11). */
+  mountainPenalty: number
+  /** A canoe makes water travel this much faster than swimming (design.md §11). */
+  canoeSpeedup: number
+  /** Carrying the canoe slows land travel by this factor (design.md §11): the
+   *  canoe is only relevant by possession, so it is a permanent land handicap. */
+  canoeLandPenalty: number
+  /** River current drift in degrees/sec at full strength on the centerline; the
+   *  flow sweeps the traveller downstream (design.md §11). */
+  currentDrift: number
+  /** Multiplier on the current's strength close to a waterfall (design.md §11). */
+  currentWaterfallBoost: number
+  /** Radius (degrees) around a waterfall within which the current is boosted. */
+  currentWaterfallRadius: number
+  /** Climbing a mountain without a rope in the pack (design.md §7/§11). */
+  mountainFall: {
+    /** Chance per travelled day of a fall while on a mountain without a rope. */
+    chancePerDay: number
+    /** Share of falls that wound severely (the rest are light). */
+    severeShare: number
+    /** Chance a fall also costs one carried equipment item. */
+    itemLossChance: number
+  }
+  /** Radius (world units) around the grave in which digging succeeds. */
+  digRadius: number
+  /** Radius (world units) around a place marker in which it can be entered. */
+  placeEnterRadius: number
+  /**
+   * Settlement collision radius as a SHARE of `placeEnterRadius` (design.md
+   * §11): the bird's-eye traveller cannot walk through a settlement's
+   * footprint. Must stay <= 1 so the "Space to enter" prompt always arms at or
+   * OUTSIDE the collision boundary — a larger collider would stop the traveller
+   * before the enter radius and no place could ever be entered.
+   */
+  placeCollisionFactor: number
+  /** How far (degrees) off the coast the sea stays swimmable (design.md
+   *  §11.2); beyond it the open ocean blocks movement even inside bays. */
+  oceanSwimMarginDeg: number
+  /** Goodwill points required before the chief reveals the location hint. */
+  goodwillForHint: number
+  /** Goodwill gained per culturally revered gift. */
+  goodwillRevered: number
+  /** Goodwill gained per neutral gift. */
+  goodwillNeutral: number
+  /** Random events enabled (design.md §14). */
+  randomEventsEnabled: boolean
+  /** Per-day base probabilities of the random events (design.md §14). */
+  events: {
+    animalAttack: number
+    robberAttack: number
+    crocodile: number
+    fever: number
+    sunblindness: number
+    sandstorm: number
+    waterfallSweep: number
+    findRemains: number
+    /** Minimum days between two rolled events (spam guard). */
+    cooldownDays: number
+  }
+  /** Expedition deadline (design.md §5): total days and staged warnings. */
+  deadline: {
+    /** TEMPORARY (design.md §5.1): while false the expedition never ends on
+     *  time — the calendar stops at 31.12.1895 instead. Flip to true to get
+     *  the §5 recall and the §18 successor flow back. */
+    enabled: boolean
+    days: number
+    /** Fractions of the deadline at which the two warnings fire. */
+    warning1: number
+    warning2: number
+    /** Days a successor loses when taking over (design.md §18). */
+    successorDayPenalty: number
+  }
+  /** Health & afflictions (design.md §6); drains/regen in points per in-game day. */
+  health: {
+    max: number
+    /** Regeneration while fed and free of afflictions. */
+    regenPerDay: number
+    starvationDrain: number
+    feverDrain: number
+    dehydrationDrain: number
+    sunblindDrain: number
+    woundLightDrain: number
+    woundSevereDrain: number
+    /** Natural wound healing while fed (design.md §6): days until a light
+     * wound closes on its own, and days until a severe wound subsides to a
+     * light one. Medicine remains the instant cure. */
+    woundHealLightDays: number
+    woundHealSevereDays: number
+    /** Days of an empty canteen (thirst) until dehydration sets in (design.md
+     * §6); fresh water in reach (river/lake) counts as drinking and resets it. */
+    dehydrationOnsetDays: number
+    /** Water consumed per travelled day away from fresh water — the base rate
+     * off the desert, and the faster desert rate (design.md §6/§11). The
+     * canteen fill fraction (0..1) drops by this over canteenCapacity, so a full
+     * canteen lasts canteenCapacity / drainPerDay travelled days. */
+    canteenDrainPerDay: number
+    canteenDesertDrainPerDay: number
+    /** Water the canteen holds (units matching the drain rates above). Raising
+     * it makes the supply last proportionally longer (design.md §6/§21). */
+    canteenCapacity: number
+    /** Days outside the desert until sun blindness heals. */
+    sunblindRecoveryDays: number
+    /** Below this the condition counts as "poor" (vultures, §19). */
+    poorThreshold: number
+  }
+  /** Show hidden objects (grave position) — debug aid, default off. */
+  showHiddenObjects: boolean
+  /** Carryable item count: equipment + gifts + treasures (design.md §6 camps). */
+  inventoryCapacity: number
+  /** Standing with the native peoples (design.md §12). */
+  reputation: {
+    /** Goodwill at which a chief bestows "Honored Friend" on his region. */
+    goodwillForFriend: number
+    /** Days a village stays hostile after wrong behavior (expulsion). */
+    hostilityDays: number
+    /** Radius in degrees around a friend region's villages with protection. */
+    friendProtectRadiusDeg: number
+    /** Days between two aid deliveries when close to death (§12). */
+    friendAidCooldownDays: number
+    /** Provisions level a friend village tops the traveler up to. */
+    friendVillageFoodDays: number
+    /** Loot of a hut robbery (§12): the haul is deliberately rich so a robbery
+     *  can pay off despite the permanent regional fallout — money, gifts (capped
+     *  by pack space) and provisions days. */
+    robberyMoney: number
+    robberyGifts: number
+    robberyFoodDays: number
+  }
+  /** Item caches (design.md §6 camps). */
+  camps: {
+    /** Chance per travelled day that a stocked free camp is looted. */
+    lootChancePerDay: number
+    /** Radius in degrees for reopening/discovering a camp. */
+    campRadiusDeg: number
+  }
+  /** First-person walk feel inside settlements (design.md §2, point 97). */
+  walkFeel: {
+    /** Velocity ease time constants (s): ramp up, settle down. */
+    accelTau: number
+    decelTau: number
+    /** Step-phase radians advanced per metre walked (cadence). */
+    stepCadence: number
+    /** Head-bob amplitudes at full speed (m): vertical, lateral figure-eight. */
+    bobAmp: number
+    swayAmp: number
+    /** Max strafe roll (deg) and its smoothing time constant (s). */
+    maxRollDeg: number
+    rollTau: number
+    /** Barely-visible idle sway when standing (m, < 0.01) and its rate (rad/s). */
+    idleSwayAmp: number
+    idleSwayRate: number
+  }
+  /** §2.5 panorama wildlife: distant drifting silhouettes (points 92/94). */
+  panoramaWildlife: {
+    /** Dry-season shore guarantee (point 135c): minimum drinkers at the
+     *  nearest water in the traveller's view once the land has dried. */
+    dryShoreMinDrinkers: number
+    /** Ring distance beyond the settlement edge: innerRadius + inner..(+spread). */
+    ringInner: number
+    ringSpread: number
+    /** Max subtended angle (deg) of a silhouette — scale is clamped down to it. */
+    maxApparentAngleDeg: number
+    /** Atmospheric-haze mix toward the sky horizon tone (0 base .. 1 sky). */
+    hazeMix: number
+    /** Feet sink below the visible horizon line so they never appear to float. */
+    sinkEpsilon: number
+    /** Clearance (deg) added around a fixed skyline landmark's footprint: no
+     *  drifting silhouette enters that azimuth span, so none crosses the
+     *  monument (design.md §2.5, point 102). */
+    landmarkMarginDeg: number
+    /** Minimum region-typical bird's-eye animals seeded near a settlement so
+     *  its vicinity is never empty (point 102). */
+    vicinityMinAnimals: number
+    /** Radius (world units) around a settlement's leave point within which that
+     *  minimum presence is guaranteed (≈ 1.5× the default-zoom view ring). */
+    vicinityRadius: number
+  }
+  /** Touch / tablet controls (design.md §17.5, point 84). Feel only — the
+   *  gameplay speeds and sensitivities are unchanged. */
+  /** Calf/parent water drama (design.md §19.8, point 122). */
+  waterDrama: {
+    /** Seconds a strong current may carry an animal before it drowns. */
+    drownSeconds: number
+    /** Effective flow at/above which self-rescue fails and drowning starts. */
+    drownFlowThreshold: number
+    /** Seasonal multiplier on the drama current at wetness 0 (dry season). */
+    dryFlowFactor: number
+    /** Seasonal multiplier on the drama current at wetness 1 (full rains). */
+    wetFlowFactor: number
+    /** Chance per finished gambol bout AT a dry-season lake bank to mire (point 123). */
+    mireChancePerBout: number
+    /** Local wetness below which a lake bank turns to miring mud. */
+    mireDrynessThreshold: number
+    /** Seconds a mired calf struggles before the mud releases it (no predator came). */
+    mireSeconds: number
+  }
+  /** The vigil at a calf's carcass (design.md §19.8, point 121). */
+  vigil: {
+    /** Seconds the bereaved parent holds the vigil before rejoining the herd. */
+    seconds: number
+    /** Seconds of standing vigil after which the carcass draws a predator to the keeper. */
+    predatorDelay: number
+  }
+  /** The elephants' mourning vigil (design.md §19.8, point 126): a herd whose
+   *  centre passes near the graveyard's bones — or a dead herd-mate — walks
+   *  in, lowers its heads over them and holds, then moves on. A vigil, not a
+   *  sacrifice: nothing dies of it. */
+  mourn: {
+    /** Seconds the herd holds at the bones before moving on (the walk-in is granted on top). */
+    seconds: number
+    /** Radius (world units) around the mourn target that draws a passing herd. */
+    radius: number
+  }
+  /** The parent's defence (design.md §19.8, points 124/125/146): a parent
+   *  ATTACKING the predator over its calf resolves three ways (one roll,
+   *  parentAttackOutcome in wildlifeBehavior.ts) — taken, or the hunt driven
+   *  off at preyWeapon[prey] × predatorFlight[predator] (capped 0.95), or the
+   *  predator KILLED outright at max(0, preyWeapon − 0.5) × killFlight
+   *  (capped 0.95; always ≤ the drive-off chance). A species missing on
+   *  either side never defends. Grief surrenders (vigil, trample-throw,
+   *  waterfall plunge, mired calf) never roll at all. Calibratable. */
+  parentDefense: {
+    /** Per-prey weapon strength, reasoned from the animal's real armament. */
+    preyWeapon: Record<string, number>
+    /** Per-predator readiness to abandon a contested kill — INVERSE to §14.1's
+     *  danger order cheetah < leopard < hyena < lion (src/systems/events.ts). */
+    predatorFlight: Record<string, number>
+    /** Per-predator fragility under a strong parent's strike (point 146):
+     *  the kill factor of the revenge outcome. Kept LOW — being eaten stays
+     *  the common ending; the user asked for sometimes, not often. */
+    killFlight: Record<string, number>
+  }
+  /** The crocodile ambush (design.md §19.16, points 130/268/275). */
+  crocodile: {
+    /** Bank visitors inside this radius of a hidden crocodile trigger the lunge. */
+    strikeRadius: number
+    /** Broadened ambush reach (point 275): a prey standing at the WATERLINE (its
+     *  feet on land) up to this distance from a hidden crocodile is a legal target
+     *  even without a formal drink pose, so a wandering grazer stepping to the bank
+     *  can be ambushed. Kept small so the croc never snatches a grazer far up the
+     *  shore — the ambush stays occasional and never clears the whole bank. */
+    ambushBankBand: number
+    /** Feed mouth anchor (point 268): the local forward reach along the crocodile's
+     *  +z axis at which the seized victim lies — its JAWS end, not its back. Scaled
+     *  by the instance size and rotated by the croc's facing to place the victim. */
+    mouthOffsetLocal: number
+    /** Speed of the lunge burst (units/s) — visible motion, never a teleport. */
+    lungeSpeed: number
+    /** Speed (units/s) of the DRAG-INTO-WATER leg (point 383): §19.16's kill is
+     *  hauled back into the river — the feed never happens on the bank. Fast
+     *  enough to read as part of the seizure, slow enough to be seen. */
+    dragSpeed: number
+    /** Hard deadline on that haul (s, invariant I4): a drag that cannot reach
+     *  water settles where it stands rather than pinning the drama forever. */
+    dragSeconds: number
+    /** Hard cap on the gripped hold (s, point 186): the grip normally ends with the
+     *  victim's caught-countdown, but a victim that VANISHES mid-grip (streamed out
+     *  in a chunk despawn, taken by another system) would freeze it forever, so the
+     *  crocodile releases and submerges after this window no matter what — the §19.8
+     *  "every started drama resolves" rule. Above the ~5 s caught window so a normal
+     *  kill is never cut short. */
+    gripSeconds: number
+    /** Rest after a DRIVE-OFF (s, point 130 under the broadened waterline
+     *  trigger): a crocodile the parent repelled keeps to its water this long
+     *  before it may take a new ambush target. Without it the freed victim,
+     *  still standing at the bank, is a legal target again the very next frame
+     *  and the croc re-seizes it at once — the rescue would read as failed. */
+    driveOffRestSeconds: number
+  }
+  /** Purposeful water crossings (point 192 — the user's water-rule revision:
+   *  animals may cross rivers/lakes and flee into them; never the ocean). */
+  waterCross: {
+    /** Farthest swimmable channel width in world units — a wider water reads
+     *  as a barrier and the mover deflects along the bank instead. */
+    maxUnits: number
+    /** Chance a roam blocked by water starts a crossing instead of turning. */
+    chance: number
+    /** Hard resolve deadline in seconds (invariant I4): a crossing that has
+     *  not landed by then ends where it stands and the setback grounds it. */
+    resolveSeconds: number
+  }
+  /** The scripted hunt (design.md §19.3). */
+  hunt: {
+    /** Walk-off overtime (point 188): a leaving predator still inside the view
+     *  ring after this many seconds retires as soon as it is OFF the rendered
+     *  frame — a coast pocket can never pin it pacing forever, while "never
+     *  despawns in sight" holds via the frustum projection. */
+    leaveOvertimeSeconds: number
+  }
+  /** Family rescue drives (design.md §19.8, point 127). */
+  family: {
+    /** Adrenaline burst: a rescuing parent's speed is its ordinary walk (3)
+     *  times this factor — ONE rule for charge, shield, guard and wade.
+     *  Grief drives (vigil walk, trample charge, waterfall plunge) are not
+     *  rescues and stay off it. */
+    rescueBurst: number
+    /** Fraction of a herd group raised as calves (design.md §19, point 169):
+     *  a group of N gets clamp(round(fraction·N), 1, floor(N/2)) calves, each
+     *  linked to its own parent — so the family dramas happen more often.
+     *  Calibratable/debug-editable. */
+    calfFraction: number
+    /** Calf leash (design.md §19.8): a calf may stray this far (world units)
+     *  from its parent before the follow yank pulls it back in — wide enough
+     *  that the family dramas read spatially. Calibratable/debug-editable. */
+    followRadius: number
+    /** Play range (design.md §19.8): calves gambol only while within this of
+     *  the parent, and the leashed scamper orbits inside it (the outward step
+     *  dies at the edge). Scales with the leash. Calibratable/debug-editable. */
+    gambolRange: number
+    /** Length (seconds) of one gambol hop-bout — how long the young hop
+     *  around before a bout ends; the idle gap between bouts stays fixed in
+     *  the scene. Calibratable/debug-editable. */
+    gambolBoutSeconds: number
+    /** Juvenile prey preference (design.md §19.8, point 245): the chance a
+     *  fresh hunt seeks a nearby JUVENILE (over a generic grazer) so the family
+     *  sacrifice/shield/flight drama plays out on screen. Juveniles are the
+     *  preferred prey of EVERY predator; raised well above half.
+     *  Calibratable/debug-editable. */
+    juvenilePreyBias: number
+    /** Crocodile drinking-juvenile bias (design.md §19.16/§19.8, point 245): a
+     *  calf/foal drinking at a bank is the STRONGLY preferred lunge target
+     *  (weight, ≫ 1 = an adult's), so the §19.8 sacrifice/rescue drama fires
+     *  more often. Calibratable/debug-editable. */
+    juvenileDrinkCrocBias: number
+    /** Orphan adoption reach (design.md §19.8/§21.2, point 262): when a
+     *  juvenile's parent dies (any cause), the nearest eligible ADULT of its
+     *  own kind within this radius (world units) adopts it and becomes its new
+     *  parent, so the §19.8 family dramas recur for the new pairing instead of a
+     *  one-off orphaning. No adult in range → the young stays parentless until
+     *  one roams near. Calibratable/debug-editable. */
+    adoptionRadius: number
+    /** Escape run (design.md §19.8, point 311): how long (seconds) a calf freed
+     *  by its parent's sacrifice runs clear of the predator before it becomes
+     *  adoptable again. Without the window the point-262 adoption claimed the
+     *  calf the instant the parent fell, so it walked back to its new parent
+     *  past the feeding predator instead of escaping. A hard deadline — the
+     *  adoption resumes the moment it expires. Calibratable/debug-editable. */
+    escapeSeconds: number
+    /** Separation window (design.md §19.8/§21.2, point 341): how long (seconds) a
+     *  juvenile may stay OUT OF REACH of its parent — farther than followRadius —
+     *  before the bond RESOLVES: both links are cleared and the young goes through
+     *  the orphan adoption, so it gains a living parent nearby or roams on
+     *  parentless instead of walking at a parent it can never reach. The clock
+     *  runs only while the calf is genuinely out of reach, so a gambol at the
+     *  leash edge never trips it. Zero switches the window off.
+     *  Calibratable/debug-editable. */
+    reunionSeconds: number
+    /** Orphan mourning window (design.md §19.8/§21.2, point 369): how long
+     *  (seconds) a juvenile whose parent DIED in front of it stays subdued —
+     *  keeping to the spot its parent fell and NOT gambolling — before it plays
+     *  again. Only a death opens the window: a bond that merely resolved
+     *  administratively (point 341 — the parent was streamed out, or the pair
+     *  drifted apart) is not mourned. Fear outranks it: every danger response
+     *  takes the frame. Calibratable/debug-editable. */
+    mourningSeconds: number
+  }
+  /** Intraspecies combat (design.md §19.17, point 264): territorial/dominance
+   *  fights WITHIN a species, on the researched species only
+   *  (docs/intraspecies-combat-1890.md; the per-species table lives in
+   *  `FIGHT_PROFILES`, wildlifeBehavior.ts). Every value here is calibratable
+   *  and debug-editable (§21.2). */
+  fight: {
+    /** Base chance per eligibility check that an idle adult of a fighting
+     *  species takes the "wants to fight" disposition — scaled by the
+     *  species' own researched rate. Kept LOW: a fight is an occasional
+     *  event, not the plains' normal state. */
+    dispositionRate: number
+    /** Seconds between two disposition checks on one animal — the roll's
+     *  cadence, so the rate above reads as "per this many seconds". */
+    dispositionInterval: number
+    /** How far (world units) an aggressor looks for a same-species opponent. */
+    seekRadius: number
+    /** Centre distance at which the two bodies meet and the clash starts. */
+    contactRadius: number
+    /** How far a chased animal must have fled before the aggressor is
+     *  satisfied and breaks off — the DRIVE-OFF ending, no kill. */
+    driveOffDistance: number
+    /** Hard deadline (seconds) on the approach/chase: past it the bout ends in
+     *  a peaceful break-off, so a converge that can never meet — a river
+     *  between them, a quarry it cannot catch — always resolves (invariant I4). */
+    approachSeconds: number
+    /** Seconds the visible clash itself lasts before it resolves. */
+    clashSeconds: number
+    /** Scales the whole clash POSE — the wedge the two bodies splay into, the
+     *  wheel about their contact point, the shove and the alternating rear.
+     *  One knob rather than five: it decides how violently the bout reads at
+     *  the bird's-eye zoom, and 0 collapses it back to two animals standing
+     *  nose to nose. Affects the picture only, never an outcome. */
+    clashIntensity: number
+    /** Speed factor over the ordinary walking pace for the converge run and
+     *  the chase — a fight is approached at a charge, not a stroll. */
+    approachBurst: number
+    /** The fleeing quarry's share of the aggressor's speed. Below 1 so a chase
+     *  closes: with the drive-off distance above it decides catch vs drive-off
+     *  — a quarry jumped at close range is run down, one with room to run
+     *  clears the patch first. */
+    quarryFleeFactor: number
+    /** Scales every species' researched clash lethality: 1 ships the research's
+     *  own rates, 0 turns every fight into a bloodless contest. */
+    lethalityScale: number
+    /** Seconds an animal is barred from a new fight after one resolved — so a
+     *  driven-off pair does not immediately re-engage. */
+    cooldownSeconds: number
+    /** TEST-ONLY (the point-177 precedent): pins the clash outcome so a staged
+     *  verification needs no retry loop. Never set in normal play. */
+    forceOutcome?: 'death' | 'submission'
+  }
+  /** Rivers (design.md §11.3, point 136). */
+  river: {
+    /**
+     * Widens every river against the strictly-scaled 0.17° base — a deliberate
+     * playability-over-scale trade (user decision): canoe navigation on the
+     * true width was fiddly. Read at build time (terrain sampling, ribbon
+     * geometry, water-edge rules derive from it at init); a debug edit
+     * applies on the next reload.
+     */
+    widthFactor: number
+    /**
+     * How far up its own course (degrees) a SEA mouth's current slackens to
+     * nothing (design.md §11.3, point 316) — the tidal/backwater reach that
+     * keeps a mouth from funnelling a swimmer into a coast-locked pocket. Read
+     * at build time (the flow index bakes the ramp per segment); a debug edit
+     * applies on the next reload.
+     */
+    mouthSlackDeg: number
+  }
+  season: {
+    /** Master factor for the seasonal weather look (0 disables, 1 full; design.md §19/§21). */
+    weatherStrength: number
+    /** How far the Nile's October crest lifts its surface (world units). */
+    nileFloodRise: number
+    /** How strongly rain darkens/glosses the ground, 0 dry .. 1 full (point 225). */
+    wetGroundStrength: number
+  }
+  /** The village cooking fire's response to rain (design.md §19.10, point 256). */
+  fire: {
+    /** How much full rain damps the SHELTERED flame under the cook-shelter (0..1, small: it burns on). */
+    shelteredRainDamp: number
+    /** How much full rain damps an UNSHELTERED open flame (0..1, large: rain drowns it toward embers). */
+    openRainDamp: number
+  }
+  /** The hold-Ctrl label layer (design.md §17.8). */
+  labelOverlay: {
+    /** How many labels may stand at once while Ctrl is held — the nearest ones
+     *  win, the rest are dropped. It is a READABILITY limit first (a crowded
+     *  savanna otherwise turns into a wall of text) and a frame budget second. */
+    maxLabels: number
+  }
+  /** Startup picture liveness (point 337). */
+  startup: {
+    /** How long the loading picture may stand still, in milliseconds — the
+     *  budget the live gate (`scripts/verify/startup.mjs`) binds. It covers the
+     *  WHOLE standstill, both the part a blocked main thread causes and the
+     *  part a busy renderer causes inside one long animation frame, so a busy
+     *  renderer cannot excuse a freeze the player plainly sees. Calibratable:
+     *  raise it only with a measurement that says the slower state is
+     *  acceptable, never to quieten a regression. */
+    pictureFreezeBudgetMs: number
+  }
+  touch: {
+    /** Virtual-stick travel radius (px) and its resting dead zone (px). */
+    stickRadius: number
+    stickDeadZone: number
+    /** Look-drag gain: multiplies the raw px delta before mouseSensitivity. */
+    lookDragFactor: number
+    /** Pinch gain: how strongly a finger-spread ratio drives the zoom (1 = raw). */
+    pinchFactor: number
+  }
+  /** Trade economy (design.md §8/§10). */
+  economy: {
+    /** Base prices of the treasure finds in $ (before regional factors). */
+    treasureBase: Record<Material | 'statue', number>
+    /** Price multiplier where the material is revered (arbitrage margin). */
+    reveredFactor: number
+    /** Buy/sell spread on treasures: bazaar bids stay below asking prices. */
+    sellSpread: number
+    buySpread: number
+    /** Haggling variance on a bazaar bid (± fraction). */
+    bidVariance: number
+    /** Ferry fare: minimum plus per-degree route cost (design.md §10). */
+    ferryMinCost: number
+    ferryCostPerDeg: number
+    /** Passage duration: minimum days plus per-degree days. */
+    ferryMinDays: number
+    ferryDaysPerDeg: number
+    /** Discovery bounties credited on the next port visit (design.md §10). */
+    bountyVillage: number
+    bountyLandmark: number
+    /** Radius in degrees within which a landmark counts as discovered. */
+    discoverRadiusDeg: number
+    /** Total ivory pieces recoverable at the elephant graveyard (design.md §4.4). */
+    graveyardIvory: number
+    /** Random ivory yield per dig at the graveyard (uniform, averages ~5). */
+    graveyardIvoryPerDig: { min: number; max: number }
+    /** Fraction of the buy price the traveler gets back when selling gear. */
+    equipmentSellFactor: number
+  }
+  /** Native-village trade (design.md §9/§10): gifts are the local currency. */
+  village: {
+    /** Gift-currency buy prices for the baseline goods sold in every village. */
+    giftPrices: Partial<Record<EquipmentId | 'food', number>>
+    /** Gifts paid to the traveler for one sold piece of gear. */
+    sellGifts: number
+  }
+  /** Village life vignettes (design.md §19.10). */
+  villageLife: {
+    /** The children's game of tag (work-order 480/351). */
+    tag: {
+      /** How many children play in a village at full seasonal presence. */
+      childCount: number
+      /** The chaser's flat-out pace (m/s) at a full reserve. */
+      sprintSpeed: number
+      /** The runner's top pace as a factor over the chaser's (> 1). */
+      runnerBoost: number
+      /** Cruise (trot) pace as a fraction of the sprint; at or below it the
+       *  reserve refills. */
+      trotFactor: number
+      /** The deliberate recovery pace, as a fraction of the sprint. */
+      recoverFactor: number
+      /** The pace a chase never falls below, as a fraction of the sprint. */
+      floorFactor: number
+      /** Reserve spent per second at the full sprint pace. */
+      drainPerSecond: number
+      /** Reserve refilled per second at or below the trot. */
+      recoverPerSecond: number
+      /** Low threshold: at or below it a child breaks off into recovery. */
+      breakOff: number
+      /** High threshold: at or above it a recovering child presses again. */
+      resume: number
+      /** A runner sprints while the chaser is this close. */
+      pressureDistance: number
+      /** A chaser presses only at a target within this reach. */
+      chaseReach: number
+      /** Inside this distance the chaser presses whatever the gap is doing. */
+      commitDistance: number
+      /** The small distance a catch happens within. */
+      catchDistance: number
+      /** How much nearer a candidate must be before the chaser switches to it. */
+      targetSwitchMargin: number
+      /** The freshly-tagged child's immunity against an instant re-tag. */
+      immunitySeconds: number
+      /** Backstop: one chaser's tenure before the group breaks off into idling. */
+      resolveCapSeconds: number
+      /** How long the group idles before starting again. */
+      idleSeconds: number
+      /** Time constant of the gap-trend ease (the burst cadence). */
+      trendTau: number
+      /** Gap trend at or below which the chaser opens a burst. */
+      trendEnter: number
+      /** Gap trend at or above which it breaks the burst off. */
+      trendLeave: number
+      /** Per-child spread of the RATES and the opening reserve (never a pace). */
+      variation: number
+      /** Seconds without real movement before a child is nudged free. */
+      unstuckSeconds: number
+      /** Forward lean (rad) at the full sprint. */
+      leanAtSprint: number
+      /** How fast the drawn body may turn, in rad/s. */
+      turnRate: number
+      /** Radius of the children's play ground — how far from its middle they
+       *  may roam. It is what keeps them a GROUP the player can stand among
+       *  (point 481/478), not a scatter across the whole settlement. */
+      playRadius: number
+    }
+    /** What the children SAY at their game (work-order point 481). */
+    childSpeech: {
+      /** Seconds between two staged situations. */
+      intervalSeconds: number
+      /** Random spread of that interval, 0..1 (0 = a metronome). */
+      intervalSpread: number
+      /** How long a following action steers the child it falls on. */
+      actionSeconds: number
+      /** The pace a child moves at while carrying out what it was told (m/s). */
+      actionPace: number
+      /** Chance that a call is answered with a refusal instead of obeyed. */
+      refusalChance: number
+      /** How long after a call a refusal still reads as its answer. */
+      replySeconds: number
+    }
+    /** The adults' errands, which teach the five landscape and action concepts
+     *  (work-order point 483). */
+    adultErrands: {
+      /** Seconds between two staged errands. */
+      intervalSeconds: number
+      /** Random spread of that interval, 0..1 (0 = a metronome). */
+      intervalSpread: number
+      /** How long a villager stays at the place it was sent to. */
+      dwellSeconds: number
+      /** How long a bout of visible digging lasts. */
+      digSeconds: number
+      /** Backstop: an errand never outlives this, however the walk goes. */
+      errandSeconds: number
+      /** Seconds of NO headway toward the target after which the errand is let
+       *  go, so a walk that cannot finish stops holding its villager. */
+      stallSeconds: number
+      /** Dev-mode alarm: no errand staged for this long in a village that could
+       *  stage one raises the `errands-silent` assert. */
+      silenceSeconds: number
+      /** The pace a villager walks at while on an errand (m/s). */
+      pace: number
+      /** How many errand villagers a village keeps out and about. Read when a
+       *  settlement is entered (like the children's count), so an edit takes
+       *  effect on the next visit rather than mid-scene. */
+      villagerCount: number
+    }
+    /** The body every inhabitant presents to every other (work-order 578). */
+    separation: {
+      /** Body radius of a figure drawn at scale 1; a child's is this times its
+       *  own scale. Smaller than the mover footprint, like the animals'. */
+      bodyRadius: number
+      /** Overlap tolerated before anything is corrected (the anti-jitter band). */
+      slop: number
+      /** Fraction of the remaining overlap taken out per frame (0..1). */
+      stiffness: number
+      /** Cap on the push speed (m/s). */
+      maxSpeed: number
+      /** Seconds wedged before the escape nudge is asked for. */
+      wedgeSeconds: number
+    }
+  }
+  /** Village speech and drums (design.md §13.4, docs/communication-poc-spec.md). */
+  communication: {
+    /** Constant pause between the atoms of a phrase — spoken and drummed alike. */
+    phrasePauseSeconds: number
+    /** How far an utterance carries, in place-scene units. */
+    hearingRadius: number
+    /** Seconds per spoken syllable — the constant pace of every utterance. */
+    syllableSeconds: number
+    /** Steepness of the hearing falloff; the level at the rim is 1/(1+falloff). */
+    hearingFalloff: number
+    /** How long the hypothesis stands over a speaker's head, for one atom. */
+    labelSeconds: number
+    /** Carrier pitch of the LOW syllable `ba`, in Hz (point 587). */
+    speechPitchHz: number
+    /** The HIGH syllable `BA` as a multiple of the low pitch — the interval that
+     *  carries the entire language, so it is calibratable on its own. */
+    speechPitchInterval: number
+    /** Relative level of the village speech on its OWN bus (point 577): the
+     *  syllables are the one sound the player must hear, so `ambientVolume`
+     *  ("everything else") no longer touches them. */
+    speechVolume: number
+    /** The gap between a speaker's own crown and its note, in settlement units. */
+    labelHeadroom: number
+  }
+}
+
+export const balance: BalanceConfig = {
+  travelSpeed: 5.6, // reduced 30% from 8 for a calmer overland pace
+  placeWalkSpeed: 10,
+  placeStrafeFactor: 0.8,
+  walkerUnstuckSeconds: 4, // an inhabitant wedged this long is teleport-nudged free (point 155)
+  unstuck: {
+    // Calibratable: half a metre is well under one walking step, so a man who
+    // really is wedged never crosses it while a man edging along a wall does;
+    // three seconds of holding the key is long enough that ordinary bumping into
+    // a hut stays silent. The search reaches across a compound (12 m) in half-
+    // metre rings — fine enough to find the slot between two huts.
+    stallDistance: 0.5,
+    stallSeconds: 3,
+    searchRadius: 12,
+    searchStep: 0.5,
+  },
+  // Calibratable: 0.7 m is about mid-thigh on a grown man — the depth at which
+  // wading stops being walking. It lands the far edge of the walkable region
+  // roughly three metres past the waterline, well inside the drawn shallows.
+  bankWadeDepth: 0.7,
+  placeEdgeBand: {
+    // Calibratable: ~3 m of give-way reads as a soft change underfoot at walking
+    // pace without turning into a stripe, and 0.9 m of wander bows the outline
+    // visibly while staying well inside the 1.5 m honesty cap.
+    widthM: 3,
+    wanderM: 0.9,
+    strength: 1,
+  },
+  bloodStain: {
+    // Calibratable: the base patch keeps the size point 267 shipped, and a
+    // quarter of the radius of swing reads as an unmistakably organic outline
+    // at the bird's-eye zooms a player can reach without turning into a star.
+    sizeScale: 1,
+    irregularity: 0.24,
+  },
+  mouseSensitivity: 0.0011,
+  lookPitchLimitDeg: 85, // just short of vertical (point 392); the view never rolls over
+  ambienceVolume: 0.1,
+  footstepVolume: 2, // footsteps twice as loud as the rest (user request)
+  ambientVolume: 0.5, // every other ambient sound half as loud (user request)
+  birdsongVolume: 1, // per-source birdsong slider (point 153); 1 = design gain
+  surf: { nearRadius: 0.4, cutoff: 3 }, // surf full within 0.4° of the coast, silent beyond 3° (point 153, calibratable)
+  daysPerUnit: 0.2,
+  foodPerDay: 0, // demo start preset (point 104): no hunger by default; debug-editable
+  foodUnitDays: 28, // one purchased food unit lasts four weeks (user calibration)
+  terrainCost: {
+    desert: 1.2,
+    savanna: 1.0,
+    jungle: 1.3, // with a machete (cleared path)
+    mountain: 1.5, // with a rope (safe, fast)
+    water: 2.0, // swimming, without a canoe
+  },
+  junglePenalty: 2.3, // no machete: 1.3 * 2.3 ≈ 3.0
+  mountainPenalty: 1.67, // no rope: 1.5 * 1.67 ≈ 2.5
+  canoeSpeedup: 3.0, // with a canoe water travel is 3x faster (user calibration)
+  canoeLandPenalty: 2.5, // carrying the canoe: 2.5x slower on ANY land (user calibration: was 1.6, too weak)
+  currentDrift: 0.2, // deg/s at full strength (~2 world units/s, ~35% of walking)
+  currentWaterfallBoost: 4.0,
+  currentWaterfallRadius: 0.5,
+  mountainFall: {
+    chancePerDay: 0.35,
+    severeShare: 0.35,
+    itemLossChance: 0.4,
+  },
+  digRadius: 3,
+  placeEnterRadius: 2.5,
+  // 0.6 → a 1.5-unit collider around the marker: it matches the drawn cluster
+  // (the port's main house plus annex reaches ~1.3 units past the anchor, the
+  // village huts ~1.45) and stays inside the river clearance every place keeps
+  // (geo.ts PORT_RIVER_CLEARANCE_DEG = band + 0.15° = 1.5 units), so a canoe
+  // passage down the channel is never deflected by a riverside settlement.
+  placeCollisionFactor: 0.6,
+  oceanSwimMarginDeg: 1.0, // calibratable: swimmable coastal band width in degrees (point 221: narrowed from 1.2 so the traveller cannot wade ~1.18 deg out into deep blue while the ~0.89 deg nearshore stays swimmable)
+  goodwillForHint: 2,
+  goodwillRevered: 2,
+  goodwillNeutral: 1,
+  randomEventsEnabled: false, // demo start preset (point 104): events off by default; debug toggle
+  // Per-day base probabilities (design.md §14). Reduced by a factor of 5 from
+  // the earlier calibration on user request — events should be markedly rarer.
+  events: {
+    animalAttack: 0.004,
+    robberAttack: 0.002,
+    crocodile: 0.012,
+    fever: 0.0024,
+    sunblindness: 0.002,
+    sandstorm: 0.0024,
+    waterfallSweep: 0.024,
+    findRemains: 0.0008,
+    cooldownDays: 5,
+  },
+  deadline: {
+    enabled: false, // suspended for now (design.md §5.1) — the date stops at 31.12.1895
+    days: 1826, // about five years (design.md §5)
+    warning1: 0.6,
+    warning2: 0.85,
+    successorDayPenalty: 30,
+  },
+  health: {
+    max: 100,
+    regenPerDay: 4,
+    starvationDrain: 6,
+    feverDrain: 8,
+    dehydrationDrain: 10,
+    sunblindDrain: 3,
+    woundLightDrain: 2,
+    woundSevereDrain: 7,
+    woundHealLightDays: 6, // a light wound closes on its own in about a week (fed)
+    woundHealSevereDays: 10, // a severe wound subsides to a light one (fed)
+    dehydrationOnsetDays: 0.5,
+    canteenDrainPerDay: 0, // demo start preset (point 104): no thirst by default (was 0.9); debug-editable
+    canteenDesertDrainPerDay: 0, // demo start preset (point 104): was 3.0; debug-editable
+    canteenCapacity: 500, // user calibration: reduced from 2000; a full canteen now lasts 500/0.9 ≈ 555 land days
+    sunblindRecoveryDays: 3,
+    poorThreshold: 40,
+  },
+  showHiddenObjects: false,
+  inventoryCapacity: 20,
+  reputation: {
+    goodwillForFriend: 6,
+    hostilityDays: 30,
+    friendProtectRadiusDeg: 1.5,
+    friendAidCooldownDays: 10,
+    friendVillageFoodDays: 21,
+    robberyMoney: 600, // rich cash haul (design.md §12): a robbery must be able to pay off
+    robberyGifts: 24, // capped by free pack space
+    robberyFoodDays: 40,
+  },
+  camps: {
+    lootChancePerDay: 0.03,
+    campRadiusDeg: 0.3,
+  },
+  walkFeel: {
+    accelTau: 0.10, // brisk ramp-up, no rubber-banding
+    decelTau: 0.06, // settles a touch faster than it starts
+    stepCadence: 0.9, // step-phase rad per metre (≈ a stride every ~1.7 m at bob 2x)
+    bobAmp: 0.045, // m vertical head bob at full speed
+    swayAmp: 0.025, // m lateral figure-eight
+    maxRollDeg: 2.5, // strafe lean
+    rollTau: 0.09,
+    idleSwayAmp: 0.004, // m — well under a centimetre
+    idleSwayRate: 0.7,
+  },
+  panoramaWildlife: {
+    dryShoreMinDrinkers: 4, // the dry season VISIBLY gathers life at the water
+    ringInner: 55, // was +14..28: far too close, so the silhouettes loomed
+    ringSpread: 30,
+    maxApparentAngleDeg: 2.5, // a distant animal subtends only a couple degrees
+    hazeMix: 0.55, // lift the flat near-black toward the sky horizon
+    sinkEpsilon: 0.4, // feet just below the horizon line, never floating
+    landmarkMarginDeg: 8, // clearance around Giza / Table Mountain
+    vicinityMinAnimals: 6, // region-typical animals guaranteed near a settlement
+    vicinityRadius: 75, // ≈ 1.5× the default-zoom view ring (VIEW_AT_ZOOM1·0.5)
+  },
+  waterDrama: {
+    drownSeconds: 30, // calibratable: how long the current may carry an animal
+    drownFlowThreshold: 0.8, // reached only by a wet-amplified or mid-channel flow
+    dryFlowFactor: 0.6, // dry-season rivers run tame — self-rescue always wins
+    wetFlowFactor: 1.8, // the rains swell the current past the drown threshold
+    mireChancePerBout: 0.35, // per bout ENDING at a dry lake bank — the bank visits are already rare
+    mireDrynessThreshold: 0.25, // wetness below this turns the shrinking bank to mud
+    mireSeconds: 45, // the mud releases an unfound calf — the drama always resolves
+  },
+  vigil: {
+    seconds: 60, // calibratable: how long the parent stands vigil before rejoining the herd
+    predatorDelay: 12, // calibratable: vigil seconds until the carcass draws a predator to the keeper
+  },
+  mourn: {
+    seconds: 30, // calibratable: how long the herd holds at the bones before moving on
+    radius: 25, // calibratable: how close a herd's centre must pass for the bones to draw it in
+  },
+  parentDefense: {
+    // Prey side — the weapon is the argument (point 125 grounding pass):
+    preyWeapon: {
+      giraffe: 1.5, // a cow's kick genuinely kills lions — the user's named case; ×0.5 (lion) = the 0.75 point 124 shipped
+      zebra: 1.0, // the kick breaks predator jaws; stallions are recorded maiming pursuers
+      wildebeest: 0.7, // horns and bulk: bulls gore and toss the lighter cats
+      warthog: 0.7, // tusks: warthogs are documented driving cheetahs off their own kills
+      antelope: 0.25, // the generic antelope has no weapon — hooves and luck
+      lion: 2.0, // the lioness defending her cubs (point 145c): claws and bulk dominate a lone hyena — ×0.7 (hyena flight) caps defendChance at 0.95, killChance ~0.22
+    },
+    // Predator side — readiness to abandon, INVERSE to §14.1's tested danger
+    // order cheetah < leopard < hyena < lion (src/systems/events.ts):
+    predatorFlight: {
+      cheetah: 1.0, // the lightest cat famously abandons rather than risk any injury
+      leopard: 0.85, // solitary — an injury means starving, so it yields to real resistance
+      hyena: 0.7, // bold in the clan, but a lone hunter breaks off under a strong defence
+      lion: 0.5, // the apex rarely yields; even the giraffe's kick only sometimes deters it
+      crocodile: 0.35, // a locked bite rarely lets go — yet buffalo and elephants are recorded driving crocodiles off a seized victim (point 130)
+    },
+    // Kill side (point 146) — how fragile the predator is under a genuinely
+    // strong parent's strike. The (preyWeapon − 0.5) gate in killChance
+    // encodes "a RELATIVELY STRONG parent": the antelope (0.25) kills
+    // nothing, by construction. Values kept low (register: sometimes, not
+    // often — being eaten stays the common ending).
+    killFlight: {
+      cheetah: 0.5, // light and famously fragile — a giraffe's or zebra's kick genuinely kills it
+      leopard: 0.25, // sturdier than the cheetah; a lucky strike can still break it
+      hyena: 0.15, // heavy-boned and thick-necked — a kick rarely does more than drive it off
+      lion: 0, // STRUCTURALLY ZERO: nothing kills a lion — §19's drama depends on it staying frightening
+      crocodile: 0, // STRUCTURALLY ZERO: no hoof or horn breaks the armoured crocodile — drive-off is the only defence (point 130)
+    },
+  },
+  family: {
+    // Calibratable: ordinary walk (3) × 2 = 6 — clearly faster than roaming,
+    // yet the shield still meets the hunter (6 > 5.6) and the too-late death
+    // stays reachable at its staged distances (point 127's balance guard).
+    rescueBurst: 2,
+    // Calibratable (point 169): ~a quarter of each herd group is calves, so a
+    // group of 8 raises 2 and a group of 4 raises 1 (floor(N/2) caps it so every
+    // calf keeps its own distinct parent). Was effectively one calf per group.
+    calfFraction: 0.25,
+    // Calibratable (point 245: ×1.5 again, from the point-238 5.4 = 3×1.8): the
+    // still-wider roam makes the sacrifice/shield/flight dramas read as clearly
+    // separate bodies. The rescue burst still closes this gap well inside the
+    // caught window — worst gap = gambolRange(18) + the too-late 3.2 ≈ 21.2 <
+    // burst-cover 6 units/s × 5 s = 30 (re-asserted in wildlifeBehavior.test.ts).
+    followRadius: 8.1,
+    // Calibratable (scaled with the leash: point-238 12 = 3×4, ×1.5 = 18): the
+    // scamper orbit's outer edge. The leash damping has no cancellation point at
+    // any range, so widening it cannot reintroduce the play/follow jitter.
+    gambolRange: 18,
+    // Calibratable: one hop-bout runs 8 s (was 16 s × 0.25 = 4 s), so the
+    // young visibly hop around before settling; the 12 s idle gap is unchanged.
+    gambolBoutSeconds: 8,
+    // Calibratable (point 245): juveniles are the preferred prey — raised from
+    // the earlier 0.6 so the family drama fires more often near the player.
+    juvenilePreyBias: 0.85,
+    // Calibratable (point 245): a drinking calf is ≫ 6× the lunge weight of an
+    // adult drinker, so the crocodile ambush overwhelmingly picks the juvenile.
+    juvenileDrinkCrocBias: 6,
+    // Calibratable (point 262): a bereaved juvenile is taken in by an adult of
+    // its kind within this reach. Sized above the calf leash (followRadius 8.1)
+    // so a nearby herd-mate — not only the dead parent's immediate neighbour —
+    // can adopt, yet local enough that the young joins a genuinely close adult.
+    adoptionRadius: 20,
+    // Calibratable (point 311): the freed calf's escape leg. Sized so the flight
+    // actually carries it clear of the kill — the prey flee runs at up to
+    // FLEE_SPEED 5 units/s and eases off with distance, so ~12 s covers the
+    // 14-unit flee radius with room to spare — and well above the ~5 s struggle
+    // window, so the escape is never cut short by the drama it follows.
+    escapeSeconds: 12,
+    // Calibratable (point 341): the bond's deadline. Sized well above one whole
+    // play cycle — a bout runs 8 s and the idle gap 12 s (20 s), and the follow
+    // leg back from the gambol edge (18 units at 4.5 units/s against a walking
+    // parent) adds a few more — so a healthy pair, which drops inside the leash
+    // once per cycle, never approaches it, while a calf that genuinely cannot
+    // reach its parent is re-homed inside a minute of play.
+    reunionSeconds: 45,
+    // Calibratable (point 369): the orphan's subdued window. Sized above one
+    // whole play cycle (an 8 s bout plus the 12 s idle gap) so the calf visibly
+    // SKIPS a gambol it would otherwise have played — the picture the point
+    // exists for — and in the register of the other §19.8 vigils (the elephants
+    // hold 30 s at the bones). It outlives the body itself (a carcass dissolves
+    // in ~9 s), so the later part of the watch is held at the spot it fell.
+    mourningSeconds: 30,
+  },
+  // Intraspecies combat (point 264). All calibratable; the per-species rates
+  // and lethalities they scale come from docs/intraspecies-combat-1890.md.
+  fight: {
+    // Rare by design, like the other §19 dramas: with the 8 s cadence below an
+    // eligible ritual-sparring bull picks a quarrel roughly every few minutes,
+    // a zebra stallion less often — an occasional event on the plain, never
+    // the herd's normal state.
+    dispositionRate: 0.012,
+    dispositionInterval: 8,
+    seekRadius: 26, // within a herd's own spread — a fight is with a herd-mate, not a stranger across the plain
+    contactRadius: 2.2, // the two bodies meet: just over the §19.5 separation radius, so the clash is contact, not overlap
+    driveOffDistance: 24, // the quarry is "far enough" — off the aggressor's patch, still on screen
+    approachSeconds: 25, // hard deadline (I4): a converge that cannot meet breaks off here
+    clashSeconds: 5, // the visible clash — long enough to read as a fight, short enough not to freeze two animals
+    clashIntensity: 1, // calibratable: full strength of the clash pose — at the default zoom 0.5 the wedge, the wheel and the rear are what make the bout READ as a fight
+    approachBurst: 1.5, // over PREY_WALK_SPEED (3): a charge at 4.5, still under the hunt's 4.6 so a real predator outruns a fighter
+    quarryFleeFactor: 0.75, // with the 24-unit drive-off: a chase begun inside ~7.5 units is caught, a wider one ends in the drive-off
+    lethalityScale: 1, // ships the researched per-species rates unchanged
+    cooldownSeconds: 45, // a settled pair does not re-engage at once
+  },
+  crocodile: {
+    strikeRadius: 5, // calibratable: bank visitors inside this of a hidden crocodile trigger the lunge
+    ambushBankBand: 4, // calibratable (point 275): a prey at the waterline within this of a hidden croc is a legal target even without drinking — kept < strikeRadius so the ambush stays occasional
+    mouthOffsetLocal: 1.15, // calibratable (point 268): local forward reach to the jaws (snout tip ~1.5), so the seized victim lies IN the mouth, gripped
+    lungeSpeed: 12, // calibratable: the burst speed of the lunge — fast and short, never a teleport
+    dragSpeed: 5, // calibratable (point 383): how fast the catch is hauled back into the water — a visible drag, not a snap
+    dragSeconds: 6, // calibratable (point 383): hard deadline on that haul (I4) — far above the ~1 s a bank kill needs
+    gripSeconds: 8, // calibratable: hard release cap on the grip (> the ~5 s caught window) so a vanished victim never pins the crocodile (point 186)
+    driveOffRestSeconds: 20, // calibratable: a repelled crocodile keeps to its water this long — long enough for the freed victim to leave the bank, so a rescue is not undone the next frame
+  },
+  waterCross: {
+    maxUnits: 6, // calibratable: swimmable channel width (point 192) — the widened rivers span ~2-4 units
+    chance: 0.3, // calibratable: how often a water-blocked roam crosses instead of turning
+    resolveSeconds: 25, // calibratable: crossing hard deadline (I4) — a normal swim needs ~3-6 s
+  },
+  hunt: {
+    leaveOvertimeSeconds: 45, // calibratable: walk-off overtime before an off-frame retire (point 188) — generous vs the ~20 s a clear walk-off needs
+  },
+  river: {
+    widthFactor: 1.6, // wider-than-scale rivers for canoe playability (point 136)
+    mouthSlackDeg: 0.6, // calibratable: ~65 km of slack water at a sea mouth (point 316)
+  },
+  season: {
+    weatherStrength: 1, // full seasonal atmosphere; calibratable, debug-editable
+    nileFloodRise: 0.55, // the unregulated 1890 flood is dramatic; calibratable
+    wetGroundStrength: 1, // rain fully darkens/glosses the ground (point 225); calibratable, debug-editable
+  },
+  fire: {
+    // The cooking fire keeps burning through the rains under its thatch cook-shelter
+    // (design.md §19.10, docs/peoples-1890.md §10, point 256): the sheltered flame
+    // only dips a touch (steamier), the unsheltered flame is drowned toward embers.
+    shelteredRainDamp: 0.25, // calibratable, debug-editable
+    openRainDamp: 0.7, // calibratable, debug-editable
+  },
+  labelOverlay: {
+    // Educated guess: a herd in the near view holds a dozen-odd animals, and
+    // two dozen labels still read as annotation rather than as a page of text.
+    maxLabels: 24, // calibratable, debug-editable
+  },
+  startup: {
+    // Measured post-fix on the headless verify lanes (point 337): the worst
+    // standstill is the renderer's own device/adapter init at ~1.0 s (WebGPU)
+    // and ~2.1 s (WebGL 2), not a shader compile any more. 4 s leaves room for
+    // a loaded machine while still catching the defect this guards, which was
+    // 21 s of blocked thread and 20 s without a painted frame.
+    pictureFreezeBudgetMs: 4000, // calibratable, debug-editable
+  },
+  touch: {
+    stickRadius: 60, // px from the stick centre to full deflection
+    stickDeadZone: 8, // px resting slack
+    lookDragFactor: 1, // 1 = drag px maps 1:1 to mouse px through mouseSensitivity
+    pinchFactor: 1, // 1 = raw finger-spread ratio drives the zoom
+  },
+  economy: {
+    treasureBase: { gold: 60, silver: 35, emerald: 70, copper: 20, ivory: 45, statue: 150 },
+    reveredFactor: 2.2,
+    sellSpread: 0.85,
+    buySpread: 1.25,
+    bidVariance: 0.15,
+    ferryMinCost: 15,
+    ferryCostPerDeg: 1.2,
+    ferryMinDays: 2,
+    ferryDaysPerDeg: 0.35,
+    bountyVillage: 15,
+    bountyLandmark: 25,
+    discoverRadiusDeg: 0.5,
+    graveyardIvory: 24,
+    graveyardIvoryPerDig: { min: 1, max: 9 }, // uniform 1..9 → average 5
+    equipmentSellFactor: 0.5,
+  },
+  village: {
+    giftPrices: { food: 1, medicine: 1, machete: 2, shovel: 2, rope: 1, canteen: 1 },
+    sellGifts: 1,
+  },
+  villageLife: {
+    // The children's game of tag (design.md §19.10, work-order 480/351).
+    // Calibratable starting values (educated guess, CLAUDE.md §2), tuned so a
+    // pursuit is decided by a runner running out of steam within a quarter of
+    // the backstop cap, never by the cap itself.
+    tag: {
+      childCount: 4,
+      sprintSpeed: 3.4, // a child at a flat run, a little under an adult's sprint
+      // Strictly above 1: a FRESH runner must be faster than a fresh chaser (so
+      // a catch is never immediate) while a SPENT one sits at the shared floor
+      // (so a catch stays reachable) — and the drain follows the pace run, which
+      // is why the hunted child is the one that tires first.
+      runnerBoost: 1.12,
+      trotFactor: 0.5,
+      recoverFactor: 0.38,
+      floorFactor: 0.34, // winded, never frozen — a still child mid-game reads as a bug
+      drainPerSecond: 0.14,
+      recoverPerSecond: 0.06,
+      breakOff: 0.4, // deliberately above the reserve at which EITHER role's curve meets the trot
+      resume: 0.85,
+      pressureDistance: 11,
+      chaseReach: 14,
+      commitDistance: 2,
+      catchDistance: 0.8,
+      targetSwitchMargin: 1.5,
+      immunitySeconds: 1.4,
+      resolveCapSeconds: 45, // BACKSTOP per chaser tenure, not the mechanism
+      idleSeconds: 8,
+      trendTau: 0.6,
+      trendEnter: 0.02, // a steady chase trends at zero — the burst must still open
+      trendLeave: 0.12,
+      variation: 0.2,
+      unstuckSeconds: 1.5,
+      leanAtSprint: 0.28,
+      // ~3.6 rad/s: a body turns a half circle in about a second — quick enough
+      // for a chase to read as agile, slow enough that no figure snaps about-face.
+      turnRate: 3.6,
+      // A ground 20 m across: room for a chase to breathe, small enough that the
+      // group stays one group a player can stand among and hear (point 481).
+      playRadius: 10,
+    },
+    // What the children SAY (work-order point 481). Calibratable starting
+    // values: an utterance every few seconds is often enough to be heard several
+    // times in one visit and rare enough that the group is not a chatterbox, and
+    // an action outlives the utterance it followed (1.5 s of syllables) so the
+    // player sees the two belong together.
+    childSpeech: {
+      intervalSeconds: 6,
+      intervalSpread: 0.35,
+      actionSeconds: 5,
+      actionPace: 1.6, // a brisk errand walk, well under the chase's trot
+      refusalChance: 0.35,
+      replySeconds: 5,
+    },
+    // The adults' errands (work-order point 483). Calibratable starting values
+    // (educated guess, CLAUDE.md §2): slower than the children's chatter,
+    // because each errand is a WALK the player has to be able to follow with his
+    // eyes — an utterance every nine seconds leaves the walk it explains alone
+    // in the picture, and the dwell is long enough to read as "arrived" without
+    // parking a figure at the water for a minute.
+    adultErrands: {
+      intervalSeconds: 9,
+      intervalSpread: 0.35,
+      dwellSeconds: 6,
+      digSeconds: 9, // several strokes of the digging motion, plainly readable
+      // Backstop only: a blocked walk lets go instead of pinning. It has to
+      // OUTLAST the longest errand the catalogue can order, or the villager is
+      // released halfway and the errand teaches nothing — and the longest one is
+      // now the walk out to the river bank, some forty metres of village away,
+      // at an unhurried 1.25 m/s and around whatever stands in the line.
+      errandSeconds: 180,
+      // A walk that gets NOWHERE for this long is let go — twenty seconds is
+      // many times the longest stretch a legitimate detour round a hut spends
+      // without shortening the straight line, and a twentieth of the backstop
+      // above, which on its own held a blocked villager for twenty staged
+      // errands and left the village silent for minutes (point 586).
+      stallSeconds: 20,
+      // The alarm window. Measured on a healthy village, the longest quiet
+      // spell between two errands is ~25 s; the user watched them stay silent
+      // for minutes, so anything past a minute is a defect, not a lull.
+      silenceSeconds: 60,
+      pace: 1.25, // an unhurried working walk
+      villagerCount: 4,
+    },
+    // The body every inhabitant presents to every other (work-order 578).
+    // Calibratable starting values (educated guess, CLAUDE.md §2), stated
+    // against the values they have to live with:
+    //  - 0.24 is 0.8 of the mover footprint (WALKER_RADIUS 0.3), so two adults
+    //    stand 0.48 m apart — clear of one another at the torso without the
+    //    village shouldering itself all day (the animals' 0.18 for the same
+    //    reason). A child is drawn at 0.55, so its pair separates at 0.264 m.
+    //  - THE CATCH WINS (point 578.4): the children's catch distance is 0.8 m,
+    //    three times the separation two children settle at, so a chaser is
+    //    always well inside its tag before the bodies ever touch.
+    //  - the slop and the stiffness are the anti-jitter half: nothing is
+    //    corrected inside a centimetre, and a correction never takes more than
+    //    half of what is left, so it settles instead of ringing.
+    separation: {
+      bodyRadius: 0.24,
+      slop: 0.01,
+      stiffness: 0.5,
+      maxSpeed: 1.2,
+      wedgeSeconds: 1.5,
+    },
+  },
+  communication: {
+    // Calibratable starting values (educated guess, CLAUDE.md §2). The pause is
+    // long enough to read one atom as finished before the next begins; the
+    // radius is a bit over twice the interact radius (4.5), so the children's
+    // group and the adults' group are never heard at once from the middle.
+    phrasePauseSeconds: 0.9,
+    // THE RANGE OF THE WHOLE ACT, not of the voice alone (point 580): a figure
+    // gestures only where it is also heard and read, so this one value bounds
+    // the utterance, the note over the head AND the arms. Beyond it a villager
+    // stands still rather than miming a concept the player gets no word for.
+    // The rule lives in src/communication/spokenGesture.ts and follows this
+    // value wherever the debug menu sets it.
+    hearingRadius: 10,
+    // One five-syllable atom takes 1.5 s at this pace — slow enough to count
+    // the beats by ear, quick enough that a seven-atom message stays short.
+    syllableSeconds: 0.3,
+    // A sharp fall: half way to the radius a voice is already at ~14 % and at
+    // the rim at 4 %, so the children's group and the adults' group are never
+    // both a permanent babble from the middle of the village.
+    hearingFalloff: 24,
+    // Long enough to read one reading and look back at the speaker, short
+    // enough that the scene never carries standing text; a phrase adds one
+    // pause per further atom (speechLabelSeconds).
+    labelSeconds: 2.6,
+    // A low chest voice, and a major sixth above it for `BA` (point 587): wide
+    // enough to be unmistakable side by side and over the drums, and NOT an
+    // octave, which the ear is prone to confuse with the same note. Both pitches
+    // stay in one human speaking range, so the two read as one voice.
+    speechPitchHz: 140,
+    speechPitchInterval: 1.68,
+    // Calibrated against the audio graph, not by feel (point 605). At the
+    // master's input a syllable spoken beside the player arrives at
+    // SPEECH_PEAK × ambienceVolume × this × the syllable's own synthesis gain
+    // (0.18 × 1.5 × ~2.07), a village drum beat at 0.9 × its layer 0.5 ×
+    // ambientVolume 0.5 — so the voices sit ~2.5× over the drums they must
+    // carry through, and the loudest realistic moment (two close speakers, the
+    // drum bed, a footstep) still stays under full scale. 0.5, the level
+    // inherited from the ambient bus in point 577, left them BELOW the drums,
+    // which is what "zu leise" meant. src/systems/ambience.test.ts measures the
+    // relation on the live buses.
+    speechVolume: 1.5,
+    // A hand's breadth over the head, no more (point 582). The note used to
+    // hang at a flat 2.3 m over the speaker's FEET — 0.85 m over a grown
+    // villager's head and about twice a child's own height over a child's — so
+    // a player looking at the figures never saw it. It rides the SPEAKER's own
+    // height now, and this is the whole gap left above it: enough for the box
+    // to clear the head, little enough that the note plainly belongs to the
+    // figure under it.
+    labelHeadroom: 0.25,
+  },
+}
+
+// Shop prices in $ (ports only; design.md §9/§10). Educated guesses.
+export const prices = {
+  food: 5, // one food unit (foodUnitDays of provisions, four weeks by default)
+  medicine: 12,
+  shovel: 20,
+  rope: 15,
+  canteen: 10,
+  machete: 15,
+  rifle: 60,
+  canoe: 50,
+  // Gift types are derived from the culture/value matrix (design.md §8).
+  // OPEN: design.md does not define concrete purchasable gift items; the POC
+  // maps gifts onto the matrix materials (gold/silver/emerald/copper/ivory).
+  giftGold: 30,
+  giftSilver: 12,
+  giftEmerald: 28,
+  giftCopper: 10,
+  giftIvory: 22,
+}
+
+// Dev hook for the headless verification (CLAUDE.md §7.2).
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  ;(window as unknown as Record<string, unknown>).__balance = balance
+}
+
+// Fixed by design.md — do not tune.
+export const START_MONEY = 250
+export const START_YEAR = 1890
+/** Start provisions in days (5 weeks, from the checkpoint table example in design.md §18). */
+export const START_FOOD_DAYS = 35
+/** Start gifts (design.md §18 table example shows 2). */
+export const START_GIFTS = 2

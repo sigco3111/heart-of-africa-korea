@@ -1,0 +1,164 @@
+name: Deploy to GitHub Pages
+
+on:
+  # Deploy on every push to the default branch, and allow a manual run.
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Least-privilege token plus the permissions the Pages deployment needs.
+# `deployments: read` is what lets the deploy job SEE a deployment that is still
+# in progress (the Deployments API listing); cancelling one is covered by
+# `pages: write`.
+permissions:
+  contents: read
+  deployments: read
+  pages: write
+  id-token: write
+
+# Only one Pages deployment at a time; a newer push supersedes an in-flight run.
+# It KEEPS that purpose alongside the unblock steps below: a superseded run is
+# killed where it stands, and the deploy action has no cancellation hook, so it
+# can leave its deployment in progress — which is precisely what the newer run's
+# "clear a stuck Pages deployment" step then cancels before deploying. Because
+# this group admits one live run at a time, and nothing else deploys Pages here,
+# any in-progress Pages deployment seen from inside the deploy job is a leftover.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        # Retry npm ci: the native deps (sharp/onnxruntime-node) fetch prebuilt
+        # binaries in their install scripts, so a transient registry/network
+        # hiccup can fail a single attempt. Retry up to 3x; a genuine failure
+        # (all attempts) still exits non-zero.
+        run: |
+          n=0; until npm ci; do n=$((n+1)); [ "$n" -ge 3 ] && exit 1; echo "npm ci failed, retry $n after 15s"; sleep 15; done
+
+      # GITHUB_ACTIONS is set on the runner, so vite.config.ts picks the
+      # /Heart-of-Africa-Remake/ base path for correct Pages asset URLs.
+      - name: Build
+        run: npm run build
+
+      # Frozen playable builds of each tag under /Heart-of-Africa-Remake/<tag>/
+      # (TASKS point 103): the same Pages site serves main at the root and each
+      # tag at its subpath — GitHub allows one Pages site per repository, so
+      # every frozen build is a subdirectory of the same artifact, rebuilt from
+      # its immutable tag on every deploy. The set is EVERY version tag (vX.Y)
+      # plus `poc` (which always mirrors the NEWEST version tag, user decision
+      # 24.07.2026) — version tags are enumerated DYNAMICALLY so a new release
+      # needs no workflow edit. Each tag is guarded so the workflow still deploys
+      # the ones that exist while another does not.
+      - name: Build each tag's frozen site (all version tags + poc)
+        run: |
+          VERSION_TAGS=$(git ls-remote --tags origin 'refs/tags/v*' | sed 's#.*refs/tags/##' | grep -vE '\^\{\}$' | sort -u)
+          for tag in $VERSION_TAGS poc; do
+            if [ -z "$(git ls-remote --tags origin "$tag")" ]; then
+              echo "tag $tag does not exist yet — skipping"
+              continue
+            fi
+            git fetch --depth 1 origin tag "$tag"
+            git worktree add "src-$tag" "$tag"
+            ( cd "src-$tag" && npm ci && npx tsc -b && npx vite build --base="/Heart-of-Africa-Remake/$tag/" )
+            mkdir -p "dist/$tag"
+            cp -r "src-$tag/dist/." "dist/$tag/"
+          done
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  # Everything below this line talks to the Pages API only — our build is the
+  # `build` job above, and `needs: build` means a failing build never reaches
+  # here. That split is what makes the retry safe: it can only ever repeat the
+  # GitHub-side half, never re-run (and never mask) a build failure.
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    # MEASURED against the run history, not guessed (06.08.2026). A healthy
+    # deploy job finishes in 9-16 s; the slowest that ever succeeded took
+    # 10 m 11 s (run 31108927749), and the steps below bound it structurally at
+    # ~11 min anyway (300 s first attempt + the cancel + 300 s retry). 25 min is
+    # that worst case with room to spare, and nothing here has ever come close.
+    #
+    # It did NOT contribute to the cancellation of 06.08.2026: the deploy job of
+    # run 31117749040 ended `cancelled` 15 m 31 s after it was created with ZERO
+    # steps recorded — it never got a runner, and `timeout-minutes` only starts
+    # counting once a job actually runs. The decisive counter-evidence is the
+    # `build` job, which carries NO timeout of ours (GitHub's 360-minute
+    # default): in runs 31123203073, 31120476738 and 31125129661 it died in
+    # exactly the same shape after 15 m 01 s, 15 m 01 s and 15 m 02 s, annotated
+    # "The job was not acquired by Runner of type hosted even after multiple
+    # attempts". That is GitHub's own runner-acquisition limit, which no value
+    # here raises or lowers. Kept at 25.
+    timeout-minutes: 25
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
+    steps:
+      # Only the deploy helpers — no build, no npm install.
+      - name: Check out the deploy helpers
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+
+      # BOUNDED on purpose (measured 06.08.2026): the default 10-minute wait
+      # ended as a bare `Timeout reached, aborting!` and left the deployment
+      # in progress, blocking every later one. Five minutes is well past a
+      # healthy deployment, and the steps below turn the wait into a REPORT.
+      - name: Deploy to GitHub Pages
+        id: deployment
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with:
+          timeout: 300000
+
+      # A stall is cleared, not left behind: cancel whatever still holds the
+      # Pages queue and decide (in a pure, tested function) whether a retry is
+      # warranted. A failure that cleared nothing is not a queue stall.
+      - name: Clear a stuck Pages deployment
+        id: unblock
+        if: steps.deployment.outcome == 'failure'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/pages-deploy-unblock.mjs --cancel
+
+      - name: Deploy to GitHub Pages (retry after clearing)
+        id: deployment_retry
+        if: steps.unblock.outputs.retry == 'true'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with:
+          timeout: 300000
+
+      # The verdict is explicit, so a stall can never end as a green run and a
+      # red one always NAMES what blocks it.
+      - name: Verdict
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          FIRST: ${{ steps.deployment.outcome }}
+          RETRY: ${{ steps.deployment_retry.outcome }}
+        run: |
+          if [ "$FIRST" = "success" ] || [ "$RETRY" = "success" ]; then
+            echo "Pages deployment succeeded (first attempt: $FIRST, retry: ${RETRY:-skipped})."
+            exit 0
+          fi
+          echo "::error title=Pages deploy failed::first attempt: $FIRST, retry: ${RETRY:-skipped}. The report below names every Pages deployment still holding the queue."
+          node scripts/pages-deploy-unblock.mjs || true
+          exit 1

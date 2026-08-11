@@ -1,0 +1,200 @@
+// Flora streaming rules (points 164 + 171 — plants no longer jump while
+// driving). The streaming edge is a circle sized to the SCENE FOG far (the
+// definitive visible limit), gated by a hysteresis step, and the per-chunk
+// fill runs nearest-first so a full instance buffer drops the FARTHEST plants.
+// These pure rules are pinned here.
+import { describe, expect, it } from 'vitest'
+import { QUALITY_PRESETS } from '../../config/quality'
+import {
+  FLORA_FILL_MAX_FRAMES,
+  FLORA_RANGE_MAX,
+  FLORA_REBUILD_STEP,
+  FLORA_FOG,
+  FLORA_SPAWN_HARD_CAP,
+  FLORA_SPAWN_MARGIN,
+  chunkOffsetsByDistance,
+  floraAmortiseMaxStep,
+  floraChunkRange,
+  floraFillBatchSize,
+  floraFillWorstDriftWu,
+  floraFogFar,
+  floraInSpawnCircle,
+  floraShouldRebuild,
+  floraSpawnRadius,
+} from './floraStreaming'
+
+const CHUNK_SIZE = 24
+// The region fog-far presets (Climate.tsx REGION table) that size the circle.
+const FOG_FARS = [165, 200, 250, 280, 330]
+
+describe('floraSpawnRadius (point 171 — the edge sits in the fog, beyond the visible ground)', () => {
+  it('is the fog far plus a positive margin, so the edge is beyond everything the fog shows', () => {
+    for (const fogFar of [165, 200, 250, 280]) {
+      expect(floraSpawnRadius(fogFar)).toBe(fogFar + FLORA_SPAWN_MARGIN)
+      // The drawn edge is strictly beyond the visible limit, so its pop is fogged.
+      expect(floraSpawnRadius(fogFar)).toBeGreaterThan(fogFar)
+    }
+  })
+
+  it('caps the radius in the widest-fog regions to bound the rebuild cost', () => {
+    // At fog far 330 the uncapped radius would be 360; the cap holds it at 320,
+    // where the fog is already >90% opaque so the edge is still out of sight.
+    expect(floraSpawnRadius(330)).toBe(FLORA_SPAWN_HARD_CAP)
+    expect(FLORA_SPAWN_HARD_CAP).toBeLessThan(330 + FLORA_SPAWN_MARGIN)
+  })
+
+  it('the recession over one hysteresis step never crosses back inside the visible circle (uncapped regions)', () => {
+    // Between rebuilds the frozen edge recedes by at most FLORA_REBUILD_STEP; for
+    // the uncapped regions it must still clear the fog far, or a pop would enter
+    // the clear view mid-window.
+    for (const fogFar of [165, 200, 250, 280]) {
+      expect(floraSpawnRadius(fogFar) - FLORA_REBUILD_STEP).toBeGreaterThan(fogFar)
+    }
+    expect(FLORA_REBUILD_STEP).toBeLessThan(FLORA_SPAWN_MARGIN)
+  })
+})
+
+describe('floraFogFar (point 276 lever 5 — the low level tightens the flora circle)', () => {
+  const LOW_FACTOR = QUALITY_PRESETS.low.floraFogFactor
+
+  it('is the plain fog far at factor 1 (medium/high — picture-identical to today)', () => {
+    expect(floraFogFar(1)).toBe(FLORA_FOG.far)
+    expect(QUALITY_PRESETS.medium.floraFogFactor).toBe(1)
+    expect(QUALITY_PRESETS.high.floraFogFactor).toBe(1)
+  })
+
+  it('shrinks the fog far by the low factor, so the instance count falls quadratically', () => {
+    expect(floraFogFar(LOW_FACTOR)).toBe(FLORA_FOG.far * LOW_FACTOR)
+    expect(LOW_FACTOR).toBeGreaterThan(0)
+    expect(LOW_FACTOR).toBeLessThan(1)
+    // The tighter circle is still fog-COUPLED (radius = fogFar + margin), so the
+    // no-pop rebuild logic is unchanged, just a smaller circle.
+    const on = floraSpawnRadius(floraFogFar(LOW_FACTOR))
+    const off = floraSpawnRadius(floraFogFar(1))
+    expect(on).toBeLessThan(off)
+    expect(on).toBeGreaterThan(floraFogFar(LOW_FACTOR)) // edge still beyond its own fog
+  })
+})
+
+describe('floraInSpawnCircle (points 164/171 — the circular edge)', () => {
+  it('draws a plant within the spawn radius and drops one beyond it', () => {
+    const spawnR = floraSpawnRadius(200) // 230
+    expect(floraInSpawnCircle(100, 0, 0, 0, spawnR)).toBe(true) // inside
+    expect(floraInSpawnCircle(300, 0, 0, 0, spawnR)).toBe(false) // beyond
+    // A plant right at the fog far is still drawn (fogFar < spawnR).
+    expect(floraInSpawnCircle(200, 0, 0, 0, spawnR)).toBe(true)
+  })
+
+  it('is boundary-exact at the spawn radius itself (<=, not <)', () => {
+    const spawnR = floraSpawnRadius(200) // 230
+    expect(floraInSpawnCircle(spawnR, 0, 0, 0, spawnR)).toBe(true) // exactly on the edge
+    expect(floraInSpawnCircle(spawnR + 0.0001, 0, 0, 0, spawnR)).toBe(false) // a hair beyond
+    // Off-axis: the same boundary exactness holds for a diagonal offset.
+    const diag = spawnR / Math.SQRT2
+    expect(floraInSpawnCircle(diag, diag, 0, 0, spawnR)).toBe(true)
+  })
+})
+
+describe('floraShouldRebuild (point 164 — hysteresis kills the back-and-forth)', () => {
+  const last = { x: 100, z: 100, fogFar: 200 }
+
+  it('always rebuilds when there is no prior build', () => {
+    expect(floraShouldRebuild({ x: 0, z: 0 }, null, 200)).toBe(true)
+  })
+
+  it('does NOT rebuild for a move shorter than the step at the same fog far', () => {
+    // A back-and-forth of a few units — the flicker the user saw — no longer
+    // rebuilds, so the frozen edge cannot re-pop.
+    expect(floraShouldRebuild({ x: 100 + FLORA_REBUILD_STEP - 1, z: 100 }, last, 200)).toBe(false)
+    expect(floraShouldRebuild({ x: 108, z: 100 }, last, 200)).toBe(false)
+  })
+
+  it('rebuilds once the move reaches the step', () => {
+    expect(floraShouldRebuild({ x: 100 + FLORA_REBUILD_STEP, z: 100 }, last, 200)).toBe(true)
+  })
+
+  it('rebuilds on a fog-far change (a new region) even without moving', () => {
+    expect(floraShouldRebuild({ x: 100, z: 100 }, last, 250)).toBe(true)
+    expect(floraShouldRebuild({ x: 100, z: 100 }, last, 200.5)).toBe(false) // within the 1-unit dead-band
+  })
+
+  it('does NOT rebuild when clearView lerps the fog past the hard cap (no rebuild storm)', () => {
+    // Above ~290 the spawn radius is pinned at the cap, so the huge fog swings a
+    // wide-zoom clearView produces (fog far → thousands) move the radius zero and
+    // must not trigger a rebuild every frame during the zoom transition.
+    const capped = { x: 100, z: 100, fogFar: 300 }
+    expect(floraShouldRebuild({ x: 100, z: 100 }, capped, 8603)).toBe(false)
+    expect(floraShouldRebuild({ x: 100, z: 100 }, capped, 500)).toBe(false)
+  })
+})
+
+describe('floraChunkRange (bounded iteration covering the circle)', () => {
+  it('covers the spawn circle and is capped', () => {
+    for (const fogFar of FOG_FARS) {
+      const range = floraChunkRange(fogFar, CHUNK_SIZE)
+      // The iterated square reaches at least the spawn radius (so no plant
+      // inside the circle is skipped).
+      expect(range * CHUNK_SIZE).toBeGreaterThanOrEqual(floraSpawnRadius(fogFar))
+      expect(range).toBeLessThanOrEqual(15)
+    }
+  })
+})
+
+describe('amortised fill bounds (driving hitches — the old circle covers during the fill)', () => {
+  it('the batch size completes any fill within the frame bound by construction', () => {
+    for (const total of [1, 100, 841, (2 * FLORA_RANGE_MAX + 1) ** 2]) {
+      const batch = floraFillBatchSize(total)
+      expect(batch).toBeGreaterThanOrEqual(1)
+      // batch offsets per frame × the frame bound covers every offset.
+      expect(batch * FLORA_FILL_MAX_FRAMES).toBeGreaterThanOrEqual(total)
+    }
+  })
+
+  it('a step trigger plus the worst fill drift stays under the spawn margin (F3 speed, 30 fps)', () => {
+    // While the fill runs, the drawn circle is still the PREVIOUS build's, so
+    // its edge recedes by the trigger step plus the drive during the fill. At
+    // the F3 test speed 25 under a heavy-load 30 fps, that recession must stay
+    // inside FLORA_SPAWN_MARGIN — the frozen edge never enters the fog-clear
+    // view mid-fill.
+    expect(FLORA_REBUILD_STEP + floraFillWorstDriftWu(25, 30)).toBeLessThan(FLORA_SPAWN_MARGIN)
+  })
+
+  it('the amortise gate itself enforces the recession bound and still admits real driving', () => {
+    const maxStep = floraAmortiseMaxStep(25, 30)
+    // By construction: even the largest amortisable trigger distance plus the
+    // worst drift never exceeds the margin (anything larger swaps sync).
+    expect(maxStep + floraFillWorstDriftWu(25, 30)).toBeLessThanOrEqual(FLORA_SPAWN_MARGIN)
+    // And a REAL driving trigger passes the gate: the step check runs once per
+    // frame, so the worst overshoot beyond FLORA_REBUILD_STEP is one frame of
+    // travel at F3 speed 25 and 30 fps.
+    expect(maxStep).toBeGreaterThan(FLORA_REBUILD_STEP + 25 / 30)
+  })
+})
+
+describe('chunkOffsetsByDistance (point 171 — nearest-first so a full buffer drops the farthest)', () => {
+  it('returns every offset in the ±range square', () => {
+    const range = 3
+    const offs = chunkOffsetsByDistance(range)
+    expect(offs.length).toBe((2 * range + 1) ** 2)
+    // No duplicates.
+    const keys = new Set(offs.map(([dx, dz]) => `${dx},${dz}`))
+    expect(keys.size).toBe(offs.length)
+  })
+
+  it('is ordered by ascending distance from the player chunk (the origin first)', () => {
+    const offs = chunkOffsetsByDistance(4)
+    expect(offs[0]).toEqual([0, 0])
+    let prev = -1
+    for (const [dx, dz] of offs) {
+      const d2 = dx * dx + dz * dz
+      // Monotonic non-decreasing: a farther chunk is never processed before a
+      // nearer one, so the instance-buffer cap drops the farthest plants.
+      expect(d2).toBeGreaterThanOrEqual(prev)
+      prev = d2
+    }
+  })
+
+  it('memoises the ordering per range (same reference)', () => {
+    expect(chunkOffsetsByDistance(5)).toBe(chunkOffsetsByDistance(5))
+  })
+})

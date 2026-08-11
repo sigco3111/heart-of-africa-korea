@@ -1,0 +1,242 @@
+# Point 276 — the bird's-eye framerate regression: measurements and findings
+
+Measured 23./24.07.2026 on a clean, SOLO machine (single session, warm dev
+server, vsync disabled), WebGPU backend, viewport 1440x900, zoom 0.5 — the
+reachable default, not a debug wide zoom (CLAUDE.md §7.2, point 172).
+
+## The instruments
+
+| script | what it answers | noise |
+| --- | --- | --- |
+| `scripts/perf-bench.mjs` | frame time (median/p95/p99) per render config × state, plus spike attribution against the point-272 burst probe | ±1.2 ms run to run |
+| `scripts/perf-structure.mjs` | what the renderer SUBMITS per frame (draw calls, triangles, memory) | camera/culling dependent |
+| `scripts/perf-breakdown.mjs` | per-system triangle breakdown of the live scene graph | none (counts) |
+| `scripts/perf-bisect.sh` | one commit's frame time in the throwaway bench worktree | inherits the bench noise |
+| `scripts/perf-lod-experiment.sh` | one terrain-LOD variant, priced for both time and geometry | inherits the bench noise |
+
+MUST-DOs, learned the hard way:
+1. **VSync OFF** or every run caps at ~60 fps and hides the true cost.
+2. **Warm the server** — the first run against a fresh dev server stalls for
+   seconds (p99 ~3200 ms). The bench discards a warm-up pass.
+3. **SOLO** — no parallel agent, verify or second session.
+4. **Judge structure by COUNTS, timing by REPEATS.** A single timing sample
+   carries ±1.2 ms here, which is more than most levers are worth; a scene-graph
+   triangle count carries none. Commit-level bisection by timing is therefore
+   NOT reliable (a re-measured commit swung 5.70 → 4.60 → 4.40 ms) — the
+   regression was found structurally instead.
+
+## The regression is real and it is GEOMETRY
+
+v0.1 (cfc2736, 15.07.) vs main (1f575a4, 23.07.), same harness:
+
+| state | v0.1 | main | delta |
+| --- | --- | --- | --- |
+| savanna standing | 4.40 ms / 227 fps | 5.60 ms / 179 fps | +1.2 ms |
+| desert standing (empty) | 4.20 ms / 238 fps | 5.40 ms / 185 fps | +1.2 ms |
+| driving savanna | 6.90 ms / 145 fps | 8.70 ms / 115 fps | +1.8 ms |
+
+The surcharge is the SAME in the empty desert as in the dense savanna, so it is
+not wildlife and not content. The scene-graph breakdown (desert, triangles):
+
+| system | v0.1 | main | factor |
+| --- | --- | --- | --- |
+| terrain chunks | 425 114 | 847 076 | **1.99x** |
+| flora / dressing | 107 788 | 260 030 | **2.41x** |
+| rivers + water | 11 340 | 44 052 | 3.9x |
+| climate (new) | — | 3 610 | new |
+| sky | 1 216 | 1 216 | — |
+
+### Where the terrain doubling comes from — exactly
+
+Per-chunk triangle histogram in the Sahara (chunk counts by triangle count):
+
+| segments | tris/chunk | v0.1 | main | refine off |
+| --- | --- | --- | --- | --- |
+| 20 (far ring) | 960 | 88 | 88 | 88 |
+| 28 (mid ring) | 1 792 | 56 | 29 | 56 |
+| 56 (near ring) | 6 720 | 25 | 37 | 25 |
+| **112 (refined)** | **25 984** | **0** | **15** | **0** |
+| terrain total | | 352 832 | 774 848 | 352 832 |
+
+The whole difference is point 209's near-ring refinement (`refinedSegments` in
+`src/scenes/travel/terrainLod.ts`): a near chunk that is coastal OR carries more
+than `MOUNTAIN_CHUNK_RELIEF_M` (400 m) of relief doubles its segments, which
+QUADRUPLES its triangles. The threshold's own comment records that 400 m marks
+**60 % of all land chunks** — so the "targeted" refinement is in practice
+near-universal. Switching it off reproduces v0.1's histogram exactly.
+
+## What each lever is worth ON THIS MACHINE
+
+| lever | savanna | desert | driving | verdict |
+| --- | --- | --- | --- | --- |
+| baseline (main) | 5.60 | 5.40 | 8.70 | — |
+| TRAA off | 5.80 | 5.30 | 8.10 | no win |
+| SSAO off | 5.90 | 5.70 | 8.40 | no win |
+| shadows off | 6.30 | 5.40 | 8.50 | no win |
+| shadow map half | 5.90 | 5.60 | 8.50 | no win |
+| all post off | 5.80 | 5.40 | 8.20 | no win |
+| everything off | 5.90 | 5.70 | 8.40 | no win |
+| device pixel ratio 2 (4x pixels) | 5.50 | 7.90 | 8.60 | barely moves — not fill-rate bound |
+| wildlife behaviour LOD (N1) | — | slower | 9.4 vs 9.1 | no win, parked |
+| **terrain refine OFF** | **5.20** | **5.00** | **8.10** | **the only real win: ~0.4-0.6 ms (~8 %)** |
+| refine rings 0-2 only | 5.80 | 5.00 | 8.60 | little — the 15 near chunks are the cost |
+| flora radius 260 -> 170 | 5.40 | 5.00 | 8.60 | rejected: p99 while driving 12 -> 48 ms |
+
+### Consequences
+
+- **The render features are not the problem.** Everything the debug menu can
+  switch off is worth almost nothing here; an F9 "Low Details" mode built out of
+  those switches would buy the user nothing on hardware like this.
+- **The p99 "hitch" trail was a measurement artifact.** A short 6 s sample once
+  showed p99 38 ms; 12 s samples put every config at 12-13 ms with a single
+  ~28 ms outlier, and the point-272 burst probe attributes ~0 ms of it to
+  terrain/flora rebuilds (terrain max 0.3 ms, flora max 0.6 ms per burst). The
+  streaming work is genuinely cheap now.
+- **Absolute framerates here are high** (179-238 fps standing, 115 fps driving).
+  This headless GPU is NOT geometry-bound, which is exactly why doubling the
+  geometry costs it only 8 %. A slower or more geometry-bound GPU can pay far
+  more for the same doubling — so the numbers that decide which lever ships must
+  come from the USER's real hardware, not from here.
+
+## Therefore: the in-game benchmark (user's request, 24.07.2026)
+
+Measure on the real machine, in the DELIVERED build, deterministically — same
+route, same seed, same date, same events, with only the graphics config varying
+between runs — and hand back a downloadable report. That is point 277.
+
+### The method it uses (F8, design.md §21.1)
+
+| piece | how |
+| --- | --- |
+| route | the three states above, same anchors as `perf-bench.mjs`: savanna (-2.5, 34.0) standing, desert (23.0, 15.0) standing, driving out of the savanna |
+| configs | baseline, traa-off, ssao-off, shadows-off, shadow-half, post-off, dpr-1, terrain-refine-off, terrain-cap-84, all-off |
+| determinism | a seeded PRNG replaces `Math.random` for the run (restored in a `finally`); seed, date, position, travel speed, zoom, journal and the event/deadline switches are reset before EVERY section |
+| **fixed step** | R3F's frame clock is pinned (`installFixedClock`): every `useFrame` gets dt = 1/60 s and `elapsedTime` advances once per frame, and each section runs a FIXED FRAME COUNT — so the simulated path, the streaming crossings and every roll are identical across configs and only the wall clock varies |
+| warm-up | one discarded pass over the whole route, so the cold caches (terrain geometry, flora, shader compiles) do not land on whichever config runs first |
+| metrics | THREE series — **real GPU time** from the WebGPU backend's timestamp queries, the CPU time inside the frame (between R3F's before/after render effects) and the wall-clock frame interval — plus `renderer.info` draw calls/triangles and a scene-graph triangle count per system |
+| GPU time | `backend.trackTimestamp = true` for the run (three requests every adapter-supported feature at device creation, so `timestamp-query` is already enabled where the hardware has it), then `renderer.resolveTimestampsAsync('render')` per frame; it returns the summed GPU duration of the last frame in the batch, so a phase collects one sample per resolve round-trip (`gpu.n` in the report). Missing feature or a throwing resolve ⇒ the series is marked unavailable WITH a reason and the run continues |
+| terrain levers | module-level runtime overrides in `src/scenes/travel/terrainLod.ts` (`setTerrainRefine`), which change the chunk geometry KEYS and therefore rebuild by themselves; restored after the run |
+
+**Reading the numbers.** A page cannot disable vsync, so a config that is
+comfortably fast reads as a flat ~16.7 ms and the wall clock cannot separate the
+levers (flagged per row as `vsyncLikely`). That matters more than it sounds: the
+regression above is GEOMETRY, i.e. a GPU cost — a config 40 % more expensive on
+the GPU moves NEITHER a capped wall clock NOR the CPU time, so a CPU-only report
+would say "no difference" for exactly the lever in question. Hence the GPU
+series, and hence the report names its own headline (`headline`, also written
+into the digest and shown in the result panel):
+
+| headline | when | what it means |
+| --- | --- | --- |
+| `gpu` | GPU timestamps resolved | read the GPU column — vsync-independent, the real cost of the lever |
+| `wall` | no timestamps, wall clock NOT capped | the frame column measures end to end |
+| `cpu` | no timestamps AND a capped wall clock | only the CPU column carries information, and the GPU cost is NOT measured — do not read this run as a verdict on a geometry lever |
+
+The headless WebGL 2 lane always lands in the third case, which is why the
+in-game run on the user's WebGPU machine is the one that decides.
+
+### First results from the instrument itself (headless WebGPU, 24.07.2026)
+
+Two things showed up the moment the benchmark measured geometry rather than
+render features:
+
+1. **The terrain lever really is worth its 2x.** With the refinement off, the
+   desert scene graph drops from **847 074 to 425 058** triangles — the v0.1
+   histogram of the table above, reproduced live and now switchable at runtime.
+   (It also caught its own wiring bug: the first version passed the override
+   under a mis-named key, so the lever silently did nothing while every test
+   stayed green. The gate now asserts the RENDERED triangle drop, not the
+   config object.)
+2. **RESOLVED (point 278) — the dressing crept upward over a session, and it
+   was WILDLIFE, not flora.** At a FIXED desert anchor, with a fixed seed and a
+   fixed date, the instanced dressing under `travel-dressing` grew every round
+   trip: 235 808 → 327 808 triangles over five round trips (mesh count constant),
+   252 766 → 354 958 across one benchmark run.
+
+   **Diagnosis (measured, not guessed).** The `travel-dressing` group holds TWO
+   instanced-mesh families: the flora streaming (`MeshStandardNodeMaterial`, 14
+   meshes) and the wildlife pools (`MeshStandardMaterial`, ~22 meshes). The
+   point-276 breakdown groups by named ancestor, so both landed in one
+   "flora/dressing" row and the growth read as flora. Splitting them by material
+   at a fixed anchor over six round trips showed the **flora bit-stable** (206 946
+   tris / 2 742 instances, IDENTICAL every trip) and the **wildlife instance count
+   climbing monotonically** (live animals 7 → 11 → 14 → 17 → 22, ~+12 per round
+   trip; the live enrichments check reproduced it as `samples:[7,11,14,17,22]`).
+
+   **Root cause.** `keepStreamedAnimal` (design.md §19.4) re-homes a roamer whose
+   birth chunk despawned into the live cell under its feet — it OUTLIVES its birth
+   chunk. The despawn pass then freed that birth chunk's key by DISTANCE alone, so
+   a later return re-entered the spawn ring and `spawnChunk` re-seeded the SAME
+   deterministic animals — a second copy, while the re-homed original still lived.
+   Over a session of ordinary back-and-forth this duplicates ~one animal per
+   re-home per round trip: unbounded growth at a fixed anchor. The code had flagged
+   exactly this as a "known pre-existing property … inherent to deterministic
+   chunk respawn".
+
+   **Fix.** Animals carry an immutable `origin` (birth chunk, pinned at the first
+   re-home); the pure `retainedSpawnChunks` (wildlifeBehavior.ts) keeps a chunk key
+   in the spawned set as long as ANY living animal still originates there, so the
+   respawn never re-seeds a chunk whose animals are already alive. The animal CULL
+   still judges membership by the IN-RANGE set (`has(key) && !beyondDespawn`),
+   identical to before, so a chunk retained only for its origin never stalls a
+   legitimate despawn. Returning to a fixed anchor now converges to a constant
+   count (live check `spread:0`). Pure regression witness:
+   `retainedSpawnChunks` in `src/scenes/travel/wildlifeBehavior.test.ts` (the
+   pre-278 path grows without bound, the fix converges); live gate: "the streamed
+   dressing does not grow over a session at a fixed anchor (point 278)" in
+   `scripts/verify/enrichments.mjs`.
+
+   **The fate of `feat/278-dressing-growth` — verdict, 30.07.2026 (point 329 (b)).**
+   The branch-cleanup of 25.07.2026 removed 133 merged branches and 26 orphaned
+   worktrees but held two back whose unmerged work had to be JUDGED rather than
+   deleted; this was the second of them, believed to carry an alternative fix plus
+   enrichments checks and pure tests that main might lack. It carries nothing main
+   lacks. Its tip was recovered from a dangling commit (`afab68d5`, 24.07. 10:15) —
+   the branch itself was already gone locally and from GitHub — and `git diff`
+   between that tip and main's `cc11bb1b` (24.07. 10:19, four minutes later) is
+   EMPTY: the same tree, re-committed onto main. Line by line, all 222 substantive
+   lines it added across the five files (the five `retainedSpawnChunks` cases, the
+   live enrichments gate, `Wildlife.tsx`, `wildlifeBehavior.ts` and this document)
+   are present in main verbatim. So there is no check to salvage, nothing landed, and
+   nothing to re-verify. Both branches of point 329 are now closed: (a) retired
+   unmerged with its lever moved to point 310, (b) closed as a duplicate of what
+   shipped.
+
+## The campfire shadow map (point 289) — measured verdict, 24.07.2026
+
+The village fire light can cast a cube shadow map (design.md §19.10, debug
+toggle "Campfire shadows", OFF by default). Measured with the perf-bench
+method (vsync off, warm dev server, SOLO) but in the FIRST-PERSON Maasai
+village, standing at the fire pit — the state the feature affects; the travel
+anchors above never mount a fire. Wall-clock frame medians, 6 s samples,
+repeated runs (the usual ±1.2 ms machine noise applies):
+
+| config | WebGPU | WebGL 2 | draw calls |
+| --- | --- | --- | --- |
+| fire shadows off | 2.1–3.6 ms (median ~2.9) | 3.1–3.5 ms | ~220–240 |
+| on, 128² cube map | +1.4 ms | — | ~390 |
+| on, 256² cube map (shipped) | +1.4–1.6 ms | +1.3 ms | ~400 |
+| on, 512² cube map | +1.5 ms | — | ~400 |
+
+Findings:
+
+1. **The map resolution is NOT the cost.** 128/256/512 are indistinguishable
+   within noise — the price is the ~170 extra draw calls of the SIX cube-face
+   shadow passes (per-face frustum culling over the casters within the light's
+   14 m range), not map fill. The shipped size is therefore 256 (quality is
+   free); a "cheap blob-shadow approximation" would buy nothing measurable and
+   was not built.
+2. **Both backends carry it, zero console errors**, and the picture gate holds
+   on both (`scripts/verify/polish.mjs`, screenshot 138: behind-stone vs
+   beside-stone contrast 3–12 off, 40–58 on).
+3. **Affordability verdict (headless): acceptable as an OPT-IN, not as a
+   default.** +1.5 ms is real money on this rig (~8 % of a driving travel
+   frame), but it applies only inside villages, where the scene is otherwise
+   cheap (place scene ran 280–450 fps here with shadows off, ~190–270 fps on).
+4. **The user's hardware gives the real verdict** — its budget is fill-rate and
+   post (see docs/perf-277-user-hardware.md), and six small cube-face passes
+   are draw/geometry work, exactly what that GPU shrugs at, so the expected
+   real-world cost is well under the headless number. The F8 benchmark routes
+   only bird's-eye states and cannot price a settlement feature: judge it with
+   the FPS counter standing at a village fire, toggle on vs off. If it proves
+   cheap, making it the default is a one-flag change (`fireShadowsEnabled`).

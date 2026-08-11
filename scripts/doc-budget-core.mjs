@@ -1,0 +1,220 @@
+// Pure decision core for the document-budget guard (user 26.07.2026).
+//
+// WHY: the two documents that are read most often had quietly grown until
+// reading them was itself a cost. CLAUDE.md — loaded at EVERY session start —
+// stood at 17 700 words, four fifths of it evidence chains needed only at a
+// closing. The work order had reached 13 000 lines, three quarters of it
+// finished points, plus a preamble of ordering notes about points closed weeks
+// earlier. Both were cut; neither cut holds by itself, because the growth was
+// never a decision — it was the sum of honest single additions.
+//
+// So the sizes get budgets, in the shape that already worked for the beginner's
+// guide: a measured ceiling, a stated reason, and the demand that a budget is
+// raised only for content that genuinely belongs, never to make room for a
+// longer telling of something already there.
+//
+// WHAT IS AND IS NOT BUDGETED, because the distinction is the whole design:
+//   - Whole file, where every line is prose that accretes: CLAUDE.md, design.md.
+//   - PREAMBLE ONLY for the work order: its POINTS are legitimate growth (a
+//     queue may be long), while its framing sections are where rules pile up.
+//     A line budget on the whole file would punish appending work.
+//   - docs/acceptance-criteria-detail.md, which point 555 turned from a two-
+//     criterion offcut into the home of all 32. It is read on demand like the
+//     evidence chains beside it, so its size costs nothing per turn — but it is
+//     now THE FILE THAT GROWS INSTEAD, and an uncapped destination is how a cut
+//     comes back: the §7.1 text would simply accrete over there and be dragged
+//     into every context that opens a criterion. A budget on it keeps the growth
+//     a decision.
+//   - Not budgeted: docs/acceptance-evidence.md, docs/design-reference.md and
+//     the archive (reference material, read on demand — their size costs
+//     nothing per turn), and the retrospective (its job is to hold every
+//     problem class; capping it would trade the wrong thing away).
+
+/**
+ * The budgets. `headingRe` limits the measurement to the part of a file BEFORE
+ * that heading — used for the work order's preamble.
+ */
+export const DOC_BUDGETS = [
+  {
+    path: 'CLAUDE.md',
+    // LOWERED to the size point 555 achieved (770 lines / 6511 words, down from
+    // 990 / 8992): the big cut moved ALL of §7.1 out. Every criterion keeps its
+    // number, its bold title, one short acceptance condition and its `Detail:`/
+    // `Evidence:` pointers, while its complete wording stands verbatim in
+    // docs/acceptance-criteria-detail.md — the grip point 459 first used on nos.
+    // 20 and 21, applied to the whole list — those two included, whose own
+    // conditions were shrunk to one sentence once their sections were verified
+    // to carry the criterion complete. The whole saving is banked, for the
+    // same reason as last time: this file is sent with EVERY turn of EVERY
+    // session and inherited by every delegated subagent, so a ceiling left at
+    // the old figure would simply be refilled and the tokens paid again. The
+    // margin left is the same fraction as before — 0.4 % of the lines, 0.3 % of
+    // the words, a sentence rather than a section — and the standing rule is
+    // unchanged: a genuinely new rule raises the budget by its measured size
+    // with the reason written here, a longer telling of something already in the
+    // file does not.
+    maxLines: 773,
+    maxWords: 6531,
+    why: 'loaded at every session start — the most expensive document in the project',
+  },
+  {
+    path: 'docs/acceptance-criteria-detail.md',
+    // MEASURED at the size point 555 left it (552 lines / 5459 words, up from
+    // 204 / 1973): it now holds 28 of the 32 criteria in full instead of two,
+    // every one the §7.1 condition no longer states completely, which is
+    // exactly why it gets a ceiling of its own. Cutting CLAUDE.md and leaving
+    // the destination uncapped would only move the accretion one file over. The
+    // headroom is the same fraction CLAUDE.md carries (0.4 % / 0.3 %), so a
+    // criterion that genuinely gains a rule raises this budget by that rule's
+    // measured size with the reason written here — and a criterion that only
+    // gets a longer telling does not.
+    maxLines: 554,
+    maxWords: 5476,
+    why: 'the destination of the §7.1 cut — uncapped, it would simply refill what the cut bought',
+  },
+  {
+    path: 'TASKS.md',
+    until: /^## Checklist/,
+    maxLines: 70,
+    maxWords: 620,
+    why: 'the preamble only; the points below it may grow, its framing may not',
+  },
+  {
+    path: 'design.md',
+    maxLines: 850,
+    // RAISED at the merge by 113 measured words: point 341 landed on main while
+    // the compression branch was open and added the separated-juvenile decision
+    // to §19.8. That is a genuinely new decision, which is exactly what the
+    // mechanism below prices in — the four-eyes review of 367 caught that the
+    // fresh ceiling would otherwise have blocked the first turn after the merge.
+    // LOWERED to the size point 367 actually achieved (839 lines / 27 555
+    // words, down from 995 / 30 512). The old 1100/32000 ceiling was set to
+    // stop a doubling and left ~14 % of headroom standing right after the
+    // compression — which a compression simply refills. The margin left here
+    // is the same shape CLAUDE.md carries: enough for a sentence, not for a
+    // section. A genuinely new design decision raises it by its measured size
+    // with the reason written here; a longer telling of something already in
+    // the document does not.
+    // RAISED by the 79 measured words of the §2.7 bullet "the startup picture
+    // stays alive" (point 337) — a genuinely new design decision of exactly
+    // the kind the paragraph above prices in: shader programs compile off the
+    // critical path, and the standstill the player may see is a calibratable
+    // budget rather than whatever the hardware takes. The tunable-value entry
+    // behind it went to docs/design-reference.md §21.2, which is unbudgeted.
+    // RAISED by the 176 measured words of the rewritten §21.1 F6 bullet
+    // (point 339, user 25.07.2026): the key stops opening a state popup and
+    // starts producing a whole bug report, so the bullet must name the
+    // archive's four members and their one stem, the reproduction summary
+    // at the top of the state, and — the part no reader can infer — that
+    // the picture is the 3-D scene ALONE, since every label and the HUD are
+    // HTML. Without that last sentence a missing label in the image reads
+    // as evidence of a bug that is not there. Not a longer telling of
+    // something already here: the old bullet described a different feature.
+    // RAISED by 43 measured words for point 369: an orphaned juvenile mourns
+    // before it plays again, and the trigger is DEATH rather than distance —
+    // a genuinely new §19.8 decision, which is what this mechanism prices in.
+    // The margin left over is unchanged, so the next sentence pays its own way.
+    // RAISED by the 189 measured words (3 lines) of the two water rules of
+    // point 316: §11.2 gains the guarantee that a blocked boundary SLIDES
+    // rather than pins, and §11.3 that a river reaches the sea as slack
+    // water. Both are genuinely new decisions — the old text said what
+    // blocks and how fast the current runs, never what happens when the two
+    // meet, and the answer is the difference between a swim and a softlock.
+    // The tunable-value entry behind the slack ramp went to
+    // docs/design-reference.md §21.2, which is unbudgeted.
+    // RAISED by the 215 measured words of the new §19.17 (point 264): animals
+    // of one species fight each other, on the researched species only. A whole
+    // §19 behaviour the document did not describe in any form — the disposition,
+    // the converge/chase paths, the clash and its lethal-vs-ritual resolution —
+    // not a longer telling of anything already here; the §19.8 dramas beside it
+    // are all predator-, family- or water-driven and say nothing about rivals of
+    // one kind. It was compressed twice before this raise (from 245 to 215 words
+    // and from 7 lines to 6, so the LINE ceiling is untouched), and the research
+    // record it summarises lives in docs/intraspecies-combat-1890.md while its
+    // eleven tunable values went to docs/design-reference.md §21.2 — both
+    // unbudgeted, so only the design decision itself is priced here. The user
+    // APPROVED this raise on 09.08.2026 — the board asked him to confirm it or
+    // have 215 words found elsewhere, and he chose to confirm. That yes is what
+    // the rule above demands for a raise; it is settled, not open.
+    // RAISED by the 102 measured words of the keyboard capture (work-order 601):
+    // §17.8's third rule said the browser's Ctrl combinations stay the browser's,
+    // and that decision is what closes the player's tab while he walks — Ctrl is
+    // the hold key and W walks forward. Its replacement is a genuinely new
+    // decision and states three things the document did not carry in any form:
+    // what a page may prevent is prevented, the three reserved chords are held by
+    // a keyboard lock bound to fullscreen + pointer lock, and where that lock is
+    // unavailable the hold key is REBINDABLE. The LINE ceiling is untouched (the
+    // rule is one bullet, as before), the §17.5 mention was cut to a
+    // parenthesis, and the mechanics went to the code and to
+    // docs/acceptance-criteria-detail.md, so only the decision is priced here.
+    // NOT yet confirmed by the user: the rule above wants his yes for a raise,
+    // and the alternative is 102 words found elsewhere in design.md.
+    maxWords: 28488,
+    why: 'read on demand, but every point that cites a section pays for the bulk around it',
+  },
+]
+
+/** Lines and words of `text`, optionally only up to `until`. */
+export function measure(text, until = null) {
+  const lines = String(text ?? '')
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+  const end = until ? lines.findIndex((l) => until.test(l)) : -1
+  const body = end >= 0 ? lines.slice(0, end) : lines
+  return { lines: body.length, words: body.join(' ').split(/\s+/).filter(Boolean).length }
+}
+
+/**
+ * Judge a set of documents. `docs` is [{ path, text }]; a path with no text
+ * (missing file) is skipped rather than failed — the guard must not block a
+ * checkout that legitimately lacks a file.
+ *
+ * Returns { block, findings: [{ path, kind, actual, budget, why }] }.
+ */
+export function evaluateDocBudgets(docs, budgets = DOC_BUDGETS) {
+  const findings = []
+  for (const budget of budgets) {
+    const doc = (docs ?? []).find((d) => d && d.path === budget.path)
+    if (!doc || typeof doc.text !== 'string') continue
+    const m = measure(doc.text, budget.until ?? null)
+    if (m.lines > budget.maxLines) {
+      findings.push({
+        path: budget.path,
+        kind: 'lines',
+        actual: m.lines,
+        budget: budget.maxLines,
+        why: budget.why,
+      })
+    }
+    if (m.words > budget.maxWords) {
+      findings.push({
+        path: budget.path,
+        kind: 'words',
+        actual: m.words,
+        budget: budget.maxWords,
+        why: budget.why,
+      })
+    }
+  }
+  return { block: findings.length > 0, findings }
+}
+
+/** The refusal: what grew, by how much, and the two honest ways out. */
+export function formatDocBudgetVerdict(verdict) {
+  if (!verdict?.block) return ''
+  const lines = ['doc-budget-guard: a document that is read constantly has outgrown its budget.', '']
+  for (const f of verdict.findings) {
+    lines.push(`  ${f.path}: ${f.actual} ${f.kind} > ${f.budget}`)
+    lines.push(`      ${f.why}`)
+  }
+  lines.push(
+    '',
+    'Two ways out, and only two. CUT: move the detail where it belongs — evidence chains',
+    'to docs/acceptance-evidence.md, project experience to the retrospective, finished',
+    'points to docs/tasks-archive.md — or delete what no longer holds. Or RAISE the budget',
+    'in scripts/doc-budget-core.mjs, by the measured size of genuinely new content and',
+    'with the reason written into the comment beside it. Raising it to fit a longer',
+    'telling of something already there is the failure this guard exists to prevent.',
+  )
+  return lines.join('\n')
+}

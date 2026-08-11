@@ -1,0 +1,202 @@
+// Self-drawing exploration map (CLAUDE.md §7.1 pt. 3/17, design.md §17/§19).
+// jsdom's canvas has no 2D context, so the map's draw effect early-returns and
+// the drawn pixels stay Playwright's job; here we cover the overlay's DOM: the
+// open/close chrome, the region-explored progress string and that the progress
+// climbs as more of the region is explored.
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { render } from '@testing-library/react'
+import { MapOverlay } from './MapOverlay'
+import { en } from '../i18n/en'
+import { useLocale } from '../i18n'
+import { useUi } from '../state/ui'
+import { freshGame, withWorld, g } from '../test/store'
+import { useGame } from '../state/store'
+import { placePlayerPosition } from '../scenes/place/playerPosition'
+import { buildLayout } from '../scenes/place/layout'
+import { maxBoundaryRadius } from '../scenes/place/boundary'
+
+// cellAt/regionAt in the progress computation need the real geodata index.
+withWorld()
+
+beforeEach(() => {
+  freshGame()
+  useLocale.getState().setLang('en')
+  useUi.setState({ mapOpen: false })
+  // The game starts inside Cairo, where the map shows the PLACE PLAN (point
+  // 79); the atlas tests below inspect the continental map, so leave first.
+  useGame.setState({ placeId: null })
+})
+afterEach(() => {
+  useLocale.getState().setLang('en')
+  useUi.setState({ mapOpen: false })
+})
+
+describe('map overlay open/close (design.md §19)', () => {
+  it('renders nothing while closed', () => {
+    render(<MapOverlay />)
+    expect(document.querySelector('.map-overlay')).not.toBeInTheDocument()
+  })
+
+  it('shows the titled overlay with a close button once opened', () => {
+    const { rerender } = render(<MapOverlay />)
+    useUi.getState().toggleMap()
+    rerender(<MapOverlay />)
+    const overlay = document.querySelector('.map-overlay')
+    expect(overlay).toBeInTheDocument()
+    expect(overlay?.textContent).toContain(en.mapOverlay.title)
+    const close = [...overlay!.querySelectorAll('button')].find((b) => b.textContent === en.mapOverlay.close)
+    expect(close).toBeTruthy()
+  })
+})
+
+describe('exploration progress (design.md §17)', () => {
+  it('renders the region-explored progress string', () => {
+    useUi.getState().toggleMap()
+    render(<MapOverlay />)
+    const progress = document.querySelector('.map-progress')
+    expect(progress).toBeInTheDocument()
+    // "North: N% explored" — region name, a percentage and the word "explored".
+    expect(progress?.textContent).toContain(en.regions.north)
+    expect(progress?.textContent).toMatch(/\d+%/)
+    expect(progress?.textContent).toContain('explored')
+  })
+
+  it('climbs as more of the region is explored', () => {
+    useUi.getState().toggleMap()
+    const { rerender } = render(<MapOverlay />)
+    const pct = () => Number(document.querySelector('.map-progress')?.textContent?.match(/(\d+)%/)?.[1] ?? '0')
+    const before = pct()
+    // Drive across the northern Sahara. lat >= 17 always classifies as north
+    // (regionAt), so the region under the progress string stays constant.
+    for (let lat = 18; lat <= 34; lat += 2) {
+      for (let lon = 2; lon <= 30; lon += 2) g().debugJumpTo(lat, lon)
+    }
+    rerender(<MapOverlay />)
+    expect(g().region).toBe('north')
+    expect(pct()).toBeGreaterThan(before)
+  })
+})
+
+describe('settlement plan (design.md §6.1, point 79)', () => {
+  it('inside a port the map shows the town plan with all functional buildings named', () => {
+    useGame.setState({ placeId: 'cairo' })
+    useUi.getState().toggleMap()
+    render(<MapOverlay />)
+    const plan = document.querySelector('.map-place-plan')
+    expect(plan).toBeInTheDocument()
+    expect(plan?.textContent).toContain(en.mapOverlay.plan(en.places.cairo))
+    // The continental atlas (canvas) is replaced, not stacked.
+    expect(document.querySelector('.map-overlay canvas')).not.toBeInTheDocument()
+    // Every enterable trade building of a port is marked and named.
+    const labels = [...document.querySelectorAll('.plan-building-label')].map((e) => e.textContent)
+    for (const type of ['shop', 'weapons', 'tools', 'market', 'bazaar', 'agency'] as const) {
+      expect(labels).toContain(en.buildings[type])
+    }
+    // The dwelling fabric shows as unlabelled context blocks.
+    expect(document.querySelectorAll('.plan-dwelling').length).toBeGreaterThan(10)
+  })
+
+  it('the plan draws the WALKABLE EDGE, not a circle of its own (work-order 482)', () => {
+    useGame.setState({ placeId: 'bambara-village' })
+    useUi.getState().toggleMap()
+    render(<MapOverlay />)
+    // The river the village stands on is on the sheet…
+    expect(document.querySelector('.map-place-plan .plan-river')).toBeInTheDocument()
+    // …and the edge is a sampled outline whose reach matches the boundary the
+    // leave check reads, out at the bank as well as round the huts.
+    const edge = document.querySelector('.map-place-plan .plan-edge')
+    expect(edge).toBeInTheDocument()
+    const layout = buildLayout('bambara-village', useGame.getState().seed)
+    const points = (edge?.getAttribute('d') ?? '')
+      .split(/[ML]\s*/)
+      .filter(Boolean)
+      .map((p) => p.trim().split(/\s+/).map(Number))
+      .filter((p) => p.length === 2 && p.every(Number.isFinite))
+    expect(points.length).toBeGreaterThan(100)
+    const radii = points.map(([x, y]) => Math.hypot(x, y))
+    // A plain circle would have one radius; the bank lobe gives it a range.
+    expect(Math.max(...radii) / Math.min(...radii)).toBeCloseTo(
+      maxBoundaryRadius(layout) / layout.radius,
+      1,
+    )
+  })
+
+  it('a village with no river keeps a plain round edge', () => {
+    useGame.setState({ placeId: 'maasai-village' })
+    useUi.getState().toggleMap()
+    render(<MapOverlay />)
+    expect(document.querySelector('.map-place-plan .plan-river')).not.toBeInTheDocument()
+    const d = document.querySelector('.map-place-plan .plan-edge')?.getAttribute('d') ?? ''
+    const radii = d
+      .split(/[ML]\s*/)
+      .filter(Boolean)
+      .map((p) => p.trim().split(/\s+/).map(Number))
+      .filter((p) => p.length === 2 && p.every(Number.isFinite))
+      .map(([x, y]) => Math.hypot(x, y))
+    expect(Math.max(...radii) - Math.min(...radii)).toBeLessThan(0.5)
+  })
+
+  it('inside a village the plan names the chief hut and the market', () => {
+    useGame.setState({ placeId: 'maasai-village' })
+    useUi.getState().toggleMap()
+    render(<MapOverlay />)
+    const labels = [...document.querySelectorAll('.plan-building-label')].map((e) => e.textContent)
+    expect(labels).toContain(en.buildings.chief)
+    expect(labels).toContain(en.buildings.market)
+  })
+
+  it('leaving the settlement returns the map to the continental atlas', () => {
+    useGame.setState({ placeId: 'cairo' })
+    useUi.getState().toggleMap()
+    const { rerender } = render(<MapOverlay />)
+    expect(document.querySelector('.map-place-plan')).toBeInTheDocument()
+    useGame.setState({ placeId: null })
+    rerender(<MapOverlay />)
+    expect(document.querySelector('.map-place-plan')).not.toBeInTheDocument()
+    expect(document.querySelector('.map-overlay canvas')).toBeInTheDocument()
+  })
+})
+
+describe('player position marker (point 89)', () => {
+  afterEach(() => {
+    placePlayerPosition.x = 0
+    placePlayerPosition.z = 0
+  })
+
+  it('the continental atlas overlays a .map-player marker inside the plate', () => {
+    // Travel mode (the fresh game sits at Cairo's world position, which
+    // projects well inside the map plate).
+    useUi.getState().toggleMap()
+    render(<MapOverlay />)
+    const marker = document.querySelector('.map-player.map-player-dom') as HTMLElement | null
+    expect(marker).toBeInTheDocument()
+    const left = parseFloat(marker!.style.left)
+    const top = parseFloat(marker!.style.top)
+    for (const v of [left, top]) {
+      expect(v).toBeGreaterThan(0)
+      expect(v).toBeLessThan(100)
+    }
+  })
+
+  it('the town plan draws a .map-player marker at the shared player position', () => {
+    placePlayerPosition.x = 5
+    placePlayerPosition.z = -3
+    useGame.setState({ placeId: 'cairo' })
+    useUi.getState().toggleMap()
+    render(<MapOverlay />)
+    const marker = document.querySelector('.map-place-plan .map-player.map-player-svg')
+    expect(marker).toBeInTheDocument()
+    // The dot and the pulsing ring are both present.
+    expect(marker!.querySelector('.map-player-dot')).toBeInTheDocument()
+    expect(marker!.querySelector('.map-player-ring')).toBeInTheDocument()
+    const m = (marker!.getAttribute('transform') ?? '').match(/translate\(([-\d.]+) ([-\d.]+)\)/)
+    expect(m).toBeTruthy()
+    const tx = parseFloat(m![1])
+    const ty = parseFloat(m![2])
+    // Player at (+5, -3) place-local → +x, -y in the SVG, inside the ±280 box.
+    expect(tx).toBeGreaterThan(0)
+    expect(ty).toBeLessThan(0)
+    expect(Math.abs(tx)).toBeLessThan(280)
+    expect(Math.abs(ty)).toBeLessThan(280)
+  })
+})

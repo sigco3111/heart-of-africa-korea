@@ -1,0 +1,4645 @@
+import { beforeAll, describe, expect, it } from 'vitest'
+import {
+  channelDriftStep,
+  drinkCatchment,
+  mireFate,
+  mireRoll,
+  vicinitySeedBounds,
+  vicinityAttemptSeed,
+  pickOffscreenLandAnchor,
+  calvesForGroup,
+  seasonFlowFactor,
+  waterStruggleFate,
+  blockHeading,
+  fleeHeading,
+  fleesFromPlayer,
+  fleesPlayerNow,
+  isInDrama,
+  drinkExemptFromPlayerShy,
+  resolveFleeTarget,
+  fleeCrossing,
+  type FleeArbitrationState,
+  PLAYER_SHY_STRONG_WEAPON,
+  FLIGHT_DESPAWN_OUT,
+  FLIGHT_SPAWN_OUT,
+  flightStep,
+  segPointDist,
+  gambolState,
+  griefTarget,
+  frontInterceptTarget,
+  trampleKills,
+  elephantWouldTrample,
+  deflectAroundCircle,
+  leashedGambolDir,
+  separationPush,
+  edgeSeparationPush,
+  turnToward,
+  committedFleeHeading,
+  FLEE_COMMIT_MARGIN,
+  crocodileTargetWeight,
+  prefersJuvenilePrey,
+  type FlightState,
+  killFlockMayDescend,
+  killFlockActive,
+  assignPerCarcassFlocks,
+  shouldMourn,
+  mournDeadline,
+  elephantStepAllowed,
+  rescueSpeed,
+  sheetAnchorY,
+  wadeSpeed,
+  waderStandY,
+  PREY_WALK_SPEED,
+  landedBirdY,
+  landedBirdClearance,
+  landedBirdLowestDepth,
+  landedBirdYPosed,
+  landedBirdClearancePosed,
+  birdExtentOffsets,
+  LANDED_BIRD_HOVER,
+  CROCODILE_REGIONS,
+  crocodileAllowedAt,
+  crocodileLungeReady,
+  crocodileAmbushResting,
+  crocodileWaterlinePrey,
+  crocodileMouthAnchor,
+  crocodileHaulStep,
+  crocodileFeedPairValid,
+  CROCODILE_BODY_LENGTH_LOCAL,
+  crocodileFeedPose,
+  CROCODILE_FEED_THRASH_AMP,
+  CROCODILE_FEED_GULP_PITCH,
+  crocodileIdleYaw,
+  CROCODILE_IDLE_SWAY_AMP,
+  crocodileGripExpired,
+  crocodileHoldsCatch,
+  grassFireEligible,
+  ploverShouldLure,
+  ploverLureHeading,
+  ploverLureResolve,
+  ploverTaken,
+  vigilBlocksLanding,
+  vigilDrawReady,
+  ambientSavannaSpecies,
+  claimedByAnotherDrama,
+  keepStreamedAnimal,
+  retainedSpawnChunks,
+  groundedBodyY,
+  groundFollowY,
+  GROUND_BODY_MIN_Y,
+  offscreenRingSpawn,
+  VULTURE_DESCEND_CLEAR_DIST,
+  deflectedStep,
+  escapeCorridorHeading,
+  guardEngagement,
+  crossingTarget,
+  calfFleeStep,
+  defendChance,
+  killChance,
+  FIGHT_PROFILES,
+  FIGHTING_SPECIES,
+  speciesFightsOwnKind,
+  wantsToFight,
+  pickFightOpponent,
+  fightApproach,
+  fightApproachOutcome,
+  fightResolve,
+  fightPairBroken,
+  clashOver,
+  clashPose,
+  type FightSide,
+  parentAttackOutcome,
+  parentDefends,
+  findAdopter,
+  adoptionHeld,
+  inEscapeRun,
+  tickEscapeRun,
+  severFamilyLinks,
+  tickFamilySeparation,
+  orphanMourns,
+  tickMourning,
+  isMourning,
+  calfMayPlay,
+  juvenileAnchor,
+  isPredatorSpecies,
+  type AdoptionAdult,
+  PREDATOR_PREY,
+  REGION_PREY,
+} from './wildlifeBehavior'
+import { balance } from '../../config/balance'
+import { mulberry32 } from '../../world/noise'
+import { dramaCurrent, riverFlow } from '../../world/geoIndex'
+import { sampleTerrain } from '../../world/terrain'
+import { setupGeodata } from '../../test/geodata'
+
+const dir = (h: number): [number, number] => [Math.sin(h), Math.cos(h)]
+
+describe('fleeHeading (design.md §19 — stable prey escape)', () => {
+  it('returns null when no threat is within range', () => {
+    expect(fleeHeading(0, 0, [[10, 0]], 3)).toBeNull()
+    expect(fleeHeading(0, 0, [], 3)).toBeNull()
+  })
+
+  it('the radius bound is exact: exactly at the radius is out of range, a hair inside is in (point 173)', () => {
+    // Threat straight ahead at distance exactly 3 (== radius): `d >= radius`
+    // excludes it, so no threat is in range.
+    expect(fleeHeading(0, 0, [[0, 3]], 3)).toBeNull()
+    // The same threat a hair closer must be in range.
+    expect(fleeHeading(0, 0, [[0, 3 - 1e-6]], 3)).not.toBeNull()
+  })
+
+  it('a coincident threat (d < 1e-4) is skipped, while d === 1e-4 itself counts', () => {
+    // Exactly on top of the animal: skipped (division by ~0 avoided) — with
+    // no other threat in range, the result is null.
+    expect(fleeHeading(0, 0, [[0, 0]], 3)).toBeNull()
+    expect(fleeHeading(0, 0, [[0, 5e-5]], 3)).toBeNull()
+    // At exactly the 1e-4 cutoff the threat is NOT skipped (`d < 1e-4` is
+    // strict), so it must be picked up as a valid, in-range threat.
+    expect(fleeHeading(0, 0, [[0, 1e-4]], 3)).not.toBeNull()
+  })
+
+  it('flees directly away from a single threat', () => {
+    // Threat ahead at +z; the animal should flee toward -z (heading π).
+    const h = fleeHeading(0, 0, [[0, 2]], 3)
+    expect(h).not.toBeNull()
+    const [sx, sz] = dir(h as number)
+    expect(sx).toBeCloseTo(0, 5)
+    expect(sz).toBeCloseTo(-1, 5)
+  })
+
+  it('flees the resultant of two flanking threats, moving away from both', () => {
+    // Two elephants ~90° apart, both at +x (one at +z, one at -z): the escape
+    // heading must point in -x (away from both), not toward either one.
+    const threats: [number, number][] = [
+      [2, 2],
+      [2, -2],
+    ]
+    const h = fleeHeading(0, 0, threats, 5) as number
+    const [sx, sz] = dir(h)
+    expect(sx).toBeCloseTo(-1, 2) // moves in -x
+    expect(sz).toBeCloseTo(0, 2)
+    // A step along the heading increases the distance to BOTH threats.
+    const step = 0.5
+    for (const [tx, tz] of threats) {
+      const before = Math.hypot(0 - tx, 0 - tz)
+      const after = Math.hypot(sx * step - tx, sz * step - tz)
+      expect(after).toBeGreaterThan(before)
+    }
+  })
+
+  it('falls back to a single threat when the repulsion cancels out exactly', () => {
+    // Two threats exactly opposite at equal distance: the summed vector is zero,
+    // so it must still bolt (toward the first-seen one's away side), not freeze
+    // on a NaN heading.
+    const h = fleeHeading(0, 0, [[0, 1], [0, -1]], 5)
+    expect(h).not.toBeNull()
+    expect(Number.isNaN(h as number)).toBe(false)
+    const [, sz] = dir(h as number)
+    expect(sz).toBeLessThan(0) // away from the +z threat seen first
+  })
+
+  it('stays stable (no oscillation) as the animal moves away from flankers', () => {
+    // Reproduces the reported symptom setup: a prey straddled by two elephants.
+    // Walking along the escape heading and recomputing each step must yield a
+    // heading that barely changes and never reverses — the old nearest-threat
+    // pick would flip ~90° here.
+    const threats: [number, number][] = [
+      [3, 1.4],
+      [3, -1.8],
+    ]
+    let x = 0
+    let z = 0
+    let prev = fleeHeading(x, z, threats, 5) as number
+    let maxDelta = 0
+    let reversals = 0
+    let prevDelta = 0
+    for (let i = 0; i < 40; i++) {
+      const h = fleeHeading(x, z, threats, 5)
+      if (h === null) break // fled out of range — fine
+      let d = h - prev
+      while (d > Math.PI) d -= Math.PI * 2
+      while (d < -Math.PI) d += Math.PI * 2
+      maxDelta = Math.max(maxDelta, Math.abs(d))
+      if (i > 0 && d * prevDelta < -1e-6) reversals++
+      prevDelta = d
+      prev = h
+      const [sx, sz] = dir(h)
+      x += sx * 0.2
+      z += sz * 0.2
+    }
+    expect(maxDelta).toBeLessThan(0.35) // no ~90° snap
+    expect(reversals).toBeLessThanOrEqual(1)
+  })
+})
+
+describe('committedFleeHeading (design.md §19.8, point 237 — commit to one escape)', () => {
+  it('adopts the first pick when nothing is held', () => {
+    expect(committedFleeHeading(undefined, 1.2, 0.9)).toBe(1.2)
+  })
+
+  it('holds the committed heading against a sub-margin jitter (either side)', () => {
+    expect(committedFleeHeading(1.0, 1.0 + 0.8, 0.9)).toBe(1.0) // 0.8 < 0.9 → hold
+    expect(committedFleeHeading(1.0, 1.0 - 0.8, 0.9)).toBe(1.0)
+  })
+
+  it('switches once a fresh pick diverges past the margin', () => {
+    expect(committedFleeHeading(1.0, 1.0 + 1.2, 0.9)).toBeCloseTo(2.2, 10) // 1.2 > 0.9 → switch
+  })
+
+  it('measures the divergence across the ±π seam', () => {
+    // held just under +π, pick just over −π: the true divergence is ~0.2 → hold.
+    const held = Math.PI - 0.1
+    const pick = -Math.PI + 0.1
+    expect(committedFleeHeading(held, pick, 0.9)).toBe(held)
+  })
+
+  it('the shipped margin is a real angular commitment (not a hair-trigger)', () => {
+    expect(FLEE_COMMIT_MARGIN).toBeGreaterThan(0.5)
+  })
+})
+
+describe('a fleeing calf holds ONE elephant escape (design.md §7.1 pt.12, point 237)', () => {
+  // The reported bug: a calf ringed by a herd on OPPOSITE sides sees
+  // fleeHeading's summed-repulsion resultant go near-zero and its ANGLE flip
+  // ~180° between two comparably-good escapes each frame. Feeding that jitter
+  // straight into the capped turnToward trembled the calf's facing between two
+  // directions. The scene now COMMITS the held heading (committedFleeHeading)
+  // and only re-picks past FLEE_COMMIT_MARGIN — the point-157/188 sticky
+  // discipline applied to the elephant dart — while turnToward still smooths it.
+  const elephants: [number, number][] = [
+    [0, 2],
+    [0, -2.1],
+  ] // flanking on OPPOSITE sides — the near-cancelling resultant
+  const dt = 1 / 60
+  const cap = 8 * dt // PREY_DODGE_TURN · dt (Wildlife.tsx)
+
+  it('the RAW summed pick oscillates — the regression witness', () => {
+    let x = 0
+    let z = 0
+    let prev = fleeHeading(x, z, elephants, 5) as number
+    let reversals = 0
+    let prevD = 0
+    for (let i = 0; i < 60; i++) {
+      const h = fleeHeading(x, z, elephants, 5)
+      if (h === null) break
+      let d = h - prev
+      while (d > Math.PI) d -= Math.PI * 2
+      while (d < -Math.PI) d += Math.PI * 2
+      if (i > 1 && d * prevD < -1e-6) reversals++
+      prevD = d
+      prev = h
+      x += Math.sin(h) * 0.2
+      z += Math.cos(h) * 0.2
+    }
+    expect(reversals).toBeGreaterThan(5) // the raw pick flips back and forth — the bug
+  })
+
+  it('the committed held heading holds ONE direction — no ~90° flip', () => {
+    // Drive the exact call-site loop: the resolved pick fed into the held
+    // dodgeHeading via committedFleeHeading + the capped turnToward.
+    let x = 0
+    let z = 0
+    let held: number | undefined
+    let prev: number | null = null
+    let maxDelta = 0
+    let reversals = 0
+    let prevD = 0
+    for (let i = 0; i < 60; i++) {
+      const pick = fleeHeading(x, z, elephants, 5)
+      if (pick === null) break
+      const target = committedFleeHeading(held, pick, FLEE_COMMIT_MARGIN)
+      held = held === undefined ? pick : turnToward(held, target, cap)
+      if (prev !== null) {
+        let d = held - prev
+        while (d > Math.PI) d -= Math.PI * 2
+        while (d < -Math.PI) d += Math.PI * 2
+        maxDelta = Math.max(maxDelta, Math.abs(d))
+        if (i > 1 && d * prevD < -1e-6) reversals++
+        prevD = d
+      }
+      prev = held
+      x += Math.sin(held) * 0.2
+      z += Math.cos(held) * 0.2
+    }
+    expect(maxDelta).toBeLessThanOrEqual(cap + 1e-9) // never a snap — capped by the turn rate
+    expect(reversals).toBeLessThanOrEqual(1) // committed to one direction
+  })
+})
+
+describe('juvenile prey preference (design.md §19.8/§19.16, point 245)', () => {
+  it('crocodileTargetWeight strongly prefers a drinking juvenile over an adult', () => {
+    const bias = balance.family.juvenileDrinkCrocBias
+    expect(crocodileTargetWeight(true, bias)).toBe(bias)
+    expect(crocodileTargetWeight(false, bias)).toBe(1)
+    expect(crocodileTargetWeight(true, bias)).toBeGreaterThan(crocodileTargetWeight(false, bias))
+    expect(bias).toBeGreaterThan(1) // ≫ an adult's weight, so the juvenile always wins
+  })
+
+  it('prefersJuvenilePrey is the calibratable roll gate, boundary-exact', () => {
+    const bias = balance.family.juvenilePreyBias
+    expect(prefersJuvenilePrey(bias - 1e-9, bias)).toBe(true)
+    expect(prefersJuvenilePrey(bias, bias)).toBe(false) // strict `<`
+    expect(prefersJuvenilePrey(0, bias)).toBe(true)
+  })
+
+  it('the shipped juvenile prey bias is raised above the earlier 0.6', () => {
+    expect(balance.family.juvenilePreyBias).toBeGreaterThan(0.6)
+    expect(balance.family.juvenilePreyBias).toBeLessThanOrEqual(1)
+  })
+})
+
+describe('fleesFromPlayer (design.md §19 — small/weak animals shy from the traveller)', () => {
+  const W = balance.parentDefense.preyWeapon
+
+  it('weak/prey adults flee the traveller', () => {
+    for (const sp of ['antelope', 'zebra', 'wildebeest', 'warthog']) {
+      expect(fleesFromPlayer(sp, false, W), sp).toBe(true)
+    }
+    // The one weak bird without a weapon entry flies off.
+    expect(fleesFromPlayer('flamingo', false, W)).toBe(true)
+  })
+
+  it('apex/strong adults never flee the traveller', () => {
+    // The §14.1 predators, the elephant and the armoured crocodile stand; the
+    // giraffe's 1.5 weapon reaches the strong bar (a lion-killing kick is
+    // nothing to flee a human over).
+    for (const sp of ['lion', 'leopard', 'hyena', 'cheetah', 'elephant', 'crocodile', 'giraffe']) {
+      expect(fleesFromPlayer(sp, false, W), sp).toBe(false)
+    }
+    // The adult plover keeps the broken-wing lure (point 145b) as its own
+    // answer to the approaching traveller — it never simply bolts.
+    expect(fleesFromPlayer('plover', false, W)).toBe(false)
+    // The weak-tier bar itself sits at the giraffe's weapon strength.
+    expect(W.giraffe).toBeGreaterThanOrEqual(PLAYER_SHY_STRONG_WEAPON)
+    expect(W.zebra).toBeLessThan(PLAYER_SHY_STRONG_WEAPON)
+  })
+
+  it('ANY juvenile flees — including mid-/high-ranked species', () => {
+    // A calf, foal, chick or cub is vulnerable whatever its adults' rank: the
+    // giraffe calf (mid-rank), the lion cub and the plover chick all bolt.
+    for (const sp of ['giraffe', 'lion', 'plover', 'zebra', 'elephant']) {
+      expect(fleesFromPlayer(sp, true, W), sp).toBe(true)
+    }
+  })
+
+  it('the flee heading is the steady summed escape — same machinery, no oscillation', () => {
+    // The traveller as the single fleeHeading threat (exactly how the scene
+    // feeds it): walking along the recomputed escape heading never reverses
+    // it — the held-heading behaviour the elephant dodge already pins.
+    const player: [number, number][] = [[0, 0]]
+    let x = 0.6
+    let z = 0.25
+    let prev: number | null = null
+    let maxDelta = 0
+    let steps = 0
+    for (let i = 0; i < 200; i++) {
+      const h = fleeHeading(x, z, player, 9)
+      if (h === null) break // fled out of the ring — done
+      if (prev !== null) {
+        let d = h - prev
+        while (d > Math.PI) d -= Math.PI * 2
+        while (d < -Math.PI) d += Math.PI * 2
+        maxDelta = Math.max(maxDelta, Math.abs(d))
+      }
+      prev = h
+      const [sx, sz] = dir(h)
+      x += sx * 0.07
+      z += sz * 0.07
+      steps++
+    }
+    expect(steps).toBeGreaterThan(20) // the flight genuinely ran
+    expect(maxDelta).toBeLessThan(0.05) // a radial escape never wavers
+    // And it ends AWAY from the traveller: further out than it started.
+    expect(Math.hypot(x, z)).toBeGreaterThan(Math.hypot(0.6, 0.25) + 1)
+  })
+})
+
+describe('isInDrama (point 252 — a hunt/drama state outranks the player-shy flee)', () => {
+  it('is false for an idle/roaming animal (no drama flag set)', () => {
+    expect(isInDrama({})).toBe(false)
+  })
+
+  it('is true for every scripted §19.8 drama / hunt state', () => {
+    // caught/gripped (lion or crocodile), the grass fire, the water dramas, the
+    // surrender/grief drives, the parent defence, and being hunted.
+    expect(isInDrama({ caught: 0 })).toBe(true) // seized — a zero timer still counts
+    expect(isInDrama({ fireTrapped: 3 })).toBe(true)
+    expect(isInDrama({ inWater: 1.2 })).toBe(true)
+    expect(isInDrama({ rescued: true })).toBe(true)
+    expect(isInDrama({ mired: 0 })).toBe(true)
+    expect(isInDrama({ crossing: { tx: 0, tz: 0, time: 0 } })).toBe(true)
+    expect(isInDrama({ vigil: { x: 0, z: 0 } })).toBe(true)
+    expect(isInDrama({ kick: 0.4 })).toBe(true)
+    expect(isInDrama({ plungeTo: { x: 0, z: 0 } })).toBe(true)
+    expect(isInDrama({ trampleTo: { x: 0, z: 0 } })).toBe(true)
+    expect(isInDrama({ defending: true })).toBe(true)
+    expect(isInDrama({ isLionVictim: true })).toBe(true)
+    expect(isInDrama({ isHunted: true })).toBe(true)
+  })
+})
+
+describe('fleesPlayerNow (point 252 — player-shy flee only in an idle state)', () => {
+  const W = balance.parentDefense.preyWeapon
+
+  it('a free weak/prey adult flees the traveller, and so does a free juvenile', () => {
+    // No drama flag set: the point-238/239 shyness applies as before.
+    expect(fleesPlayerNow('antelope', false, W, {})).toBe(true)
+    expect(fleesPlayerNow('zebra', true, W, {})).toBe(true)
+  })
+
+  it('does NOT flee the traveller while in any drama / hunt state', () => {
+    // A predator/drama state outranks the player-shy flee (predator > player-flee
+    // > idle): the animal keeps its drama behaviour regardless of proximity.
+    const states = [
+      { caught: 0 },
+      { fireTrapped: 2 },
+      { inWater: 0.5 },
+      { rescued: true },
+      { mired: 0 },
+      { crossing: { tx: 1, tz: 1, time: 0 } },
+      { vigil: { x: 0, z: 0 } },
+      { kick: 0.3 },
+      { plungeTo: { x: 0, z: 0 } },
+      { trampleTo: { x: 0, z: 0 } },
+      { defending: true },
+      { isLionVictim: true },
+      { isHunted: true },
+    ]
+    for (const s of states) {
+      expect(fleesPlayerNow('antelope', false, W, s), JSON.stringify(s)).toBe(false)
+      expect(fleesPlayerNow('zebra', true, W, s), JSON.stringify(s)).toBe(false)
+    }
+  })
+
+  it('a strong adult never flees regardless of state (unchanged from fleesFromPlayer)', () => {
+    expect(fleesPlayerNow('lion', false, W, {})).toBe(false)
+    expect(fleesPlayerNow('giraffe', false, W, {})).toBe(false)
+  })
+
+  it('a hunted prey within the player-shy radius keeps its predator-flee heading, not the player-flee', () => {
+    // The scene layout the bug report hit: the lion behind the prey, the
+    // traveller off to one side, both inside the shy radius. Because the prey is
+    // hunted (isHunted / the designated victim), the player-flee is suppressed —
+    // so the animal keeps the LION-flee heading (away from the predator) and the
+    // hunt resolves instead of stalling next to the idle prey.
+    const ax = 0
+    const az = 0
+    const lion: [number, number][] = [[0, -4]] // predator directly behind (−z)
+    const player: [number, number][] = [[4, 0]] // traveller off to the +x side
+    const radius = 9
+    // The predator-flee heading (the 3411 block): straight away from the lion.
+    const lionFlee = fleeHeading(ax, az, lion, radius)
+    expect(lionFlee).not.toBeNull()
+    // Gated player-flee (the site's pTarget decision): null while hunted.
+    const hunted = { isHunted: true }
+    const pTarget = fleesPlayerNow('antelope', false, W, hunted)
+      ? fleeHeading(ax, az, player, radius)
+      : null
+    expect(pTarget).toBeNull()
+    // So the heading the animal keeps is the lion-flee — pointing away from the
+    // predator (+z), NOT away from the player (−x).
+    const [lsx, lsz] = dir(lionFlee as number)
+    expect(lsz).toBeGreaterThan(0.9) // away from the lion, up the +z axis
+    expect(lsx).toBeCloseTo(0, 5) // and NOT deflected toward −x by the player
+  })
+})
+
+describe('drinkExemptFromPlayerShy (point 247 — the drinker exemption narrowed to the staged bank victims)', () => {
+  it('a non-drinker is never exempt, whatever the other flags say', () => {
+    expect(drinkExemptFromPlayerShy(true, false, false)).toBe(false)
+    expect(drinkExemptFromPlayerShy(false, false, true)).toBe(false)
+  })
+
+  it('a staged §19.16 bank victim keeps its stand — juvenile or adult', () => {
+    // The crocodile's lunge target / a drinker inside a lurking crocodile's
+    // strike radius: fleeing there would starve the ambush drama the
+    // exemption exists to protect.
+    expect(drinkExemptFromPlayerShy(true, true, true)).toBe(true)
+    expect(drinkExemptFromPlayerShy(false, true, true)).toBe(true)
+  })
+
+  it('a PLAIN drinking juvenile is NOT exempt — it flees the close traveller (the reported bug)', () => {
+    expect(drinkExemptFromPlayerShy(true, true, false)).toBe(false)
+  })
+
+  it('an adult keeps its whole bank errand (and stays in the ambush pool)', () => {
+    expect(drinkExemptFromPlayerShy(false, true, false)).toBe(true)
+  })
+})
+
+describe('resolveFleeTarget (point 252 — ONE arbitration point for every co-active threat)', () => {
+  const W = balance.parentDefense.preyWeapon
+  // The rings/speeds mirror Wildlife.tsx: PREY_PANIC_RADIUS 3.2, PLAYER_SHY_
+  // RADIUS 6, the PREY_PANIC_EXIT 1.5 hysteresis, PREY_DODGE_TURN 8 rad/s.
+  const free = (over: Partial<FleeArbitrationState> = {}): FleeArbitrationState => ({
+    species: 'antelope',
+    isJuvenile: false,
+    preyWeapon: W,
+    drama: {},
+    drinking: false,
+    stagedBankVictim: false,
+    ...over,
+  })
+
+  it('a free weak prey inside the shy ring flees the PLAYER — heading straight away', () => {
+    const pick = resolveFleeTarget(0, 0, free(), [], [[0, -4]], 3.2, 6)
+    expect(pick).not.toBeNull()
+    expect(pick!.source).toBe('player')
+    const [, sz] = dir(pick!.heading)
+    expect(sz).toBeGreaterThan(0.9) // away from the traveller at −z
+  })
+
+  it('threatened by BOTH a predator and the player, the prey flees the PREDATOR — the resolver yields nothing', () => {
+    // The predator flee runs its own urgency-scaled block and reaches the
+    // resolver flagged isHunted: the player-shy flee must stay silent so the
+    // hunt keeps its own heading and always resolves (the lion victim too).
+    expect(resolveFleeTarget(0, 0, free({ drama: { isHunted: true } }), [], [[0, -2]], 3.2, 6)).toBeNull()
+    expect(resolveFleeTarget(0, 0, free({ drama: { isLionVictim: true } }), [], [[0, -2]], 3.2, 6)).toBeNull()
+  })
+
+  it('EVERY drama state silences the player-shy flee — incl. the flags the old call sites omitted', () => {
+    // The pre-252 hand-built DramaState objects left out vigil/kick/plunge/
+    // trample/defending; the one dramaStateOf builder now feeds them all.
+    const dramas = [
+      { caught: 0 },
+      { fireTrapped: 2 },
+      { inWater: 0.5 },
+      { rescued: true },
+      { mired: 0 },
+      { crossing: { tx: 1, tz: 1, time: 0 } },
+      { vigil: { x: 0, z: 0 } },
+      { kick: 0.3 },
+      { plungeTo: { x: 0, z: 0 } },
+      { trampleTo: { x: 0, z: 0 } },
+      { defending: true },
+    ]
+    for (const drama of dramas) {
+      expect(resolveFleeTarget(0, 0, free({ drama }), [], [[0, -2]], 3.2, 6), JSON.stringify(drama)).toBeNull()
+    }
+  })
+
+  it('the elephant dart outranks the player-shy flee — one source, the pure elephant heading, no blend', () => {
+    const elephants: [number, number][] = [[-2.5, 0]]
+    const player: [number, number][] = [[0, -4]]
+    const pick = resolveFleeTarget(0, 0, free(), elephants, player, 3.2, 6)
+    expect(pick).not.toBeNull()
+    expect(pick!.source).toBe('elephant')
+    // The heading is EXACTLY the elephant escape — an equal-weight blend of two
+    // opposing sources would have a cancellation point (the leash lesson).
+    expect(pick!.heading).toBe(fleeHeading(0, 0, elephants, 3.2) as number)
+  })
+
+  it('the elephant dart stays live even for a hunted prey (boxed between lion and herd)', () => {
+    const pick = resolveFleeTarget(0, 0, free({ drama: { isHunted: true } }), [[-2.5, 0]], [[0, -4]], 3.2, 6)
+    expect(pick).not.toBeNull()
+    expect(pick!.source).toBe('elephant')
+  })
+
+  it('the staged bank drinker stands its ground; a plain drinking juvenile flees (point 247)', () => {
+    const juv = free({ species: 'zebra', isJuvenile: true, drinking: true })
+    // Bound into the staged §19.16 drama: no player-shy target.
+    expect(resolveFleeTarget(0, 0, { ...juv, stagedBankVictim: true }, [], [[0, -2]], 3.2, 6)).toBeNull()
+    // A PLAIN drinking juvenile with the traveller close: it bolts.
+    const pick = resolveFleeTarget(0, 0, juv, [], [[0, -2]], 3.2, 6)
+    expect(pick).not.toBeNull()
+    expect(pick!.source).toBe('player')
+    // An adult drinker keeps its errand either way.
+    expect(resolveFleeTarget(0, 0, free({ drinking: true }), [], [[0, -2]], 3.2, 6)).toBeNull()
+  })
+
+  it('a strong free adult yields no player target — but still darts from a close elephant', () => {
+    expect(resolveFleeTarget(0, 0, free({ species: 'giraffe' }), [], [[0, -2]], 3.2, 6)).toBeNull()
+    const pick = resolveFleeTarget(0, 0, free({ species: 'giraffe' }), [[-2.5, 0]], [[0, -2]], 3.2, 6)
+    expect(pick).not.toBeNull()
+    expect(pick!.source).toBe('elephant')
+  })
+
+  it('out of every ring the resolver is silent — idle', () => {
+    expect(resolveFleeTarget(0, 0, free(), [[-10, 0]], [[0, -10]], 3.2, 6)).toBeNull()
+  })
+
+  it('the held heading turns smoothly across a source hand-over — no flip (the point-237 rule ACROSS the arbitration)', () => {
+    // Drive the exact call-site loop: elephant to the west, traveller to the
+    // south, the resolved target fed into the held dodgeHeading via the capped
+    // turnToward under the hysteresis rings. The dart ends as the animal
+    // outruns the elephant ring and HANDS OVER to the player flight — the
+    // sources must switch exactly once (never alternate) and the held heading
+    // must never jump more than the per-frame turn cap.
+    const dt = 1 / 60
+    const cap = 8 * dt // PREY_DODGE_TURN · dt
+    const elephants: [number, number][] = [[-2.5, 0]]
+    const player: [number, number][] = [[0, -5]]
+    let x = 0
+    let z = 0
+    let held: number | undefined
+    const sources: string[] = []
+    let maxDelta = 0
+    for (let i = 0; i < 600; i++) {
+      const engaged = held !== undefined
+      const ring = engaged ? 3.2 * 1.5 : 3.2
+      const shyRing = engaged ? 6 * 1.5 : 6
+      const pick = resolveFleeTarget(x, z, free(), elephants, player, ring, shyRing)
+      if (pick === null) break // fled clear of both rings — the flight resolved
+      if (sources[sources.length - 1] !== pick.source) sources.push(pick.source)
+      const prev = held
+      held = held === undefined ? pick.heading : turnToward(held, pick.heading, cap)
+      if (prev !== undefined) {
+        let d = held - prev
+        while (d > Math.PI) d -= Math.PI * 2
+        while (d < -Math.PI) d += Math.PI * 2
+        maxDelta = Math.max(maxDelta, Math.abs(d))
+      }
+      x += Math.sin(held) * 4.2 * dt // PLAYER_SHY_SPEED-class step
+      z += Math.cos(held) * 4.2 * dt
+    }
+    expect(sources).toEqual(['elephant', 'player']) // one hand-over, no flip-flop
+    expect(maxDelta).toBeLessThanOrEqual(cap + 1e-9) // capped turn — never a snap
+  })
+})
+
+describe('fleeCrossing (point 248 — a boxed flight takes to the water like the predator-flee)', () => {
+  // Fake terrain along +z: water for z in (0, 3], land beyond — the
+  // crossingTarget fixture shape.
+  const riverThenLand = (_x: number, z: number) => (z > 0 && z <= 3 ? 'water' : 'savanna')
+
+  it('a player-boxed shy flee (deflected step dead-ended) triggers a crossing to the far bank', () => {
+    // The call-site pattern: the shy step fans against a water cove and cannot
+    // move; fleeCrossing then finds the far bank along the held heading — the
+    // animal crosses instead of pinning at the waterline.
+    const cove = () => true // every probe wet — the dead-ended fan
+    const step = deflectedStep(0, 0, 0, 0.07, cove, 0.8)
+    expect(step.moved).toBe(false)
+    const esc = fleeCrossing(step.moved, false, 0, 0, 0, 6, riverThenLand)
+    expect(esc).not.toBeNull()
+    expect(esc!.tz).toBeGreaterThan(3) // past the channel, on land
+  })
+
+  it('still refuses the ocean and an over-wide channel — the point-192 rules are unchanged', () => {
+    const toSea = (_x: number, z: number) => (z > 0 && z <= 2 ? 'water' : 'ocean')
+    expect(fleeCrossing(false, false, 0, 0, 0, 6, toSea)).toBeNull()
+    const wide = (_x: number, z: number) => (z > 0 && z <= 9 ? 'water' : 'savanna')
+    expect(fleeCrossing(false, false, 0, 0, 0, 6, wide)).toBeNull()
+  })
+
+  it('a step that MOVED, or an animal already mid-crossing, starts no crossing', () => {
+    expect(fleeCrossing(true, false, 0, 0, 0, 6, riverThenLand)).toBeNull()
+    expect(fleeCrossing(false, true, 0, 0, 0, 6, riverThenLand)).toBeNull()
+  })
+})
+
+describe('blockHeading (design.md §19 — the parent shields its hunted calf)', () => {
+  it('heads for the station between the calf and the predator', () => {
+    // Parent at origin, calf at (-4,0), predator at (5,0): the station lies at
+    // calf + 1.8·(1,0) = (-2.2, 0) — between the two, on the escape line.
+    const h = blockHeading(0, 0, -4, 0, 5, 0, 1.8)
+    expect(h).not.toBeNull()
+    const [sx, sz] = dir(h as number)
+    expect(sx).toBeLessThan(-0.9) // toward -x: back to the station
+    expect(Math.abs(sz)).toBeLessThan(0.1)
+  })
+
+  it('holds (null) once on station', () => {
+    // Station for calf (0,0), predator (6,0), offset 1.8 sits at (1.8, 0).
+    expect(blockHeading(1.8, 0, 0, 0, 6, 0, 1.8)).toBeNull()
+    expect(blockHeading(1.9, 0.1, 0, 0, 6, 0, 1.8)).toBeNull() // within the eps
+    expect(blockHeading(4, 0, 0, 0, 6, 0, 1.8)).not.toBeNull() // off station
+  })
+
+  it('holds in the degenerate case of the predator on the calf', () => {
+    expect(blockHeading(3, 3, 4, 3, 4, 3, 1.8)).toBeNull()
+  })
+
+  it('the shield stays between hunter and calf, and the hunter takes it first', () => {
+    // Mini-simulation of the chase contract; the numbers mirror Wildlife.tsx
+    // (HUNT_LION_SPEED 5.6, CALF_FLEE_SPEED 3.8, the burst-derived shield
+    // speed rescueSpeed(balance.family.rescueBurst) — point 127,
+    // PARENT_BLOCK_OFFSET 1.8, PARENT_TAKE_DIST 1.0, CALF_CATCH_DIST 0.9).
+    // The parent holding its blocking station must be reached by the hunter
+    // (taken in the calf's place) before the hunter ever reaches the calf.
+    const shieldSpeed = rescueSpeed(balance.family.rescueBurst)
+    expect(shieldSpeed).toBeGreaterThan(5.6) // the hunter must be able to meet the shield
+    const calf = { x: 0, z: 0 }
+    const parent = { x: 1.8, z: 0 }
+    const pred = { x: 12, z: 0 }
+    const dt = 1 / 60
+    let taken = false
+    let caught = false
+    let betweenSamples = 0
+    let samples = 0
+    for (let i = 0; i < 60 * 30 && !taken && !caught; i++) {
+      const toCalf = Math.atan2(calf.x - pred.x, calf.z - pred.z)
+      pred.x += Math.sin(toCalf) * 5.6 * dt
+      pred.z += Math.cos(toCalf) * 5.6 * dt
+      if (Math.hypot(pred.x - calf.x, pred.z - calf.z) < 0.9) {
+        caught = true
+        break
+      }
+      const away = Math.atan2(calf.x - pred.x, calf.z - pred.z)
+      calf.x += Math.sin(away) * 3.8 * dt
+      calf.z += Math.cos(away) * 3.8 * dt
+      const h = blockHeading(parent.x, parent.z, calf.x, calf.z, pred.x, pred.z, 1.8)
+      if (h !== null) {
+        parent.x += Math.sin(h) * shieldSpeed * dt
+        parent.z += Math.cos(h) * shieldSpeed * dt
+      }
+      samples++
+      const dPredParent = Math.hypot(pred.x - parent.x, pred.z - parent.z)
+      const dPredCalf = Math.hypot(pred.x - calf.x, pred.z - calf.z)
+      if (dPredParent < dPredCalf && Math.hypot(parent.x - calf.x, parent.z - calf.z) < 4) betweenSamples++
+      if (dPredParent < 1.0) taken = true
+    }
+    expect(taken).toBe(true) // the hunter meets the shield…
+    expect(caught).toBe(false) // …never the calf
+    expect(betweenSamples / samples).toBeGreaterThan(0.8) // the shield held its line
+  })
+})
+
+describe('the broken-wing lure (design.md §19.8, point 145b — the sacrifice that is a lie)', () => {
+  it('the act starts only when a threat is close to the NEST', () => {
+    expect(ploverShouldLure(9.9)).toBe(true)
+    expect(ploverShouldLure(10)).toBe(false)
+    expect(ploverShouldLure(50)).toBe(false)
+  })
+
+  it('the drag heading leads away from the nest, off to the chosen side of the threat axis', () => {
+    // Threat south of the nest: the base axis points north; the sides split it.
+    const left = ploverLureHeading(0, 0, 0, -10, 1)
+    const right = ploverLureHeading(0, 0, 0, -10, -1)
+    expect(left).not.toBeCloseTo(right, 5)
+    // Both headings move AWAY from the threat (positive z component).
+    expect(Math.cos(left)).toBeGreaterThan(0)
+    expect(Math.cos(right)).toBeGreaterThan(0)
+  })
+
+  it('the act always resolves: past the safe distance or past its time it returns home', () => {
+    expect(ploverLureResolve(0, 5)).toBe('keep')
+    expect(ploverLureResolve(11.9, 5)).toBe('keep')
+    expect(ploverLureResolve(12, 5)).toBe('return') // the act ran its time
+    expect(ploverLureResolve(0, 18)).toBe('return') // the threat is drawn far enough
+    expect(ploverLureResolve(0, 17.9)).toBe('keep')
+  })
+
+  it('the lie sometimes fails — but only a predator can take the actor, never the traveller', () => {
+    expect(ploverTaken(0.1, true)).toBe(true) // inside the chance band, predator near
+    expect(ploverTaken(0.15, true)).toBe(false) // boundary: at the chance it escapes
+    expect(ploverTaken(0.99, true)).toBe(false)
+    expect(ploverTaken(0.0, false)).toBe(false) // no predator: it always escapes
+  })
+})
+
+describe('grassFireEligible (design.md §19.8/§19.13, point 145a — the burning of the steppe)', () => {
+  it('burns only in the cured-grass zones, dry season only', () => {
+    expect(grassFireEligible('sahel', 0.0)).toBe(true)
+    expect(grassFireEligible('congo-north', 0.1)).toBe(true)
+    expect(grassFireEligible('sahel', 0.15)).toBe(false) // the rains wet the grass
+    expect(grassFireEligible('sahel', 0.8)).toBe(false)
+  })
+
+  it('never in the Congo (no cured grass), never in a rainless desert (no grass at all)', () => {
+    expect(grassFireEligible('congo', 0.0)).toBe(false)
+    expect(grassFireEligible('atlantic-equatorial', 0.0)).toBe(false)
+    expect(grassFireEligible('sahara-north', 0.0)).toBe(false)
+    expect(grassFireEligible('sahara-south', 0.0)).toBe(false)
+    expect(grassFireEligible('mediterranean', 0.0)).toBe(false)
+  })
+})
+
+describe('crocodile placement and ambush trigger (design.md §19.16, point 130)', () => {
+  it('a crocodile exists only in river/lake water — never on any land type or the ocean', () => {
+    expect(crocodileAllowedAt('water')).toBe(true)
+    for (const t of ['ocean', 'coast', 'desert', 'savanna', 'jungle', 'mountain']) {
+      expect(crocodileAllowedAt(t)).toBe(false)
+    }
+  })
+
+  it('every region carries crocodile water ~1890 — the region list is complete', () => {
+    // The Nile (north/east), Niger and Senegal (west), Congo (central), the
+    // eastern lakes and the Zambezi south: all five regions hold home rivers.
+    expect([...CROCODILE_REGIONS].sort()).toEqual(['central', 'east', 'north', 'south', 'west'])
+  })
+
+  it('the lunge fires only on a bank visitor inside the strike radius', () => {
+    expect(crocodileLungeReady(4, true, 5)).toBe(true)
+    expect(crocodileLungeReady(5, true, 5)).toBe(true) // boundary inclusive
+    expect(crocodileLungeReady(5.01, true, 5)).toBe(false)
+    expect(crocodileLungeReady(2, false, 5)).toBe(false) // nobody at the bank — it waits
+  })
+
+  it('the broadened waterline trigger (point 275): any prey at the bank in range is a target', () => {
+    // A grazer standing ON LAND within the ambush band is now catchable even
+    // without a formal drink pose — a wandering grazer stepping to the bank.
+    expect(crocodileWaterlinePrey(3, true, 5, 4)).toBe(true)
+    expect(crocodileWaterlinePrey(4, true, 5, 4)).toBe(true) // boundary inclusive (min(5,4)=4)
+    // Just past the band: not caught — the croc never chases up the shore.
+    expect(crocodileWaterlinePrey(4.01, true, 5, 4)).toBe(false)
+    // Merely passing on WATER (crossing, mid-channel) is not a bank-stander.
+    expect(crocodileWaterlinePrey(2, false, 5, 4)).toBe(false)
+    // The reach is the SMALLER of strike radius and bank band, so a wide strike
+    // radius never lets the croc snatch a grazer far up the shore.
+    expect(crocodileWaterlinePrey(4.5, true, 8, 4)).toBe(false)
+    expect(crocodileWaterlinePrey(4.5, true, 4, 8)).toBe(false)
+  })
+
+  it('a driven-off crocodile rests before it may ambush again (point 130 under the broadened trigger)', () => {
+    // Never repelled: no rest, the ambush is armed as before.
+    expect(crocodileAmbushResting(12, undefined)).toBe(false)
+    // Repelled at t=10 with a 20 s rest: it stays off the bank through the
+    // window, so the calf it just released is not handed straight back.
+    expect(crocodileAmbushResting(10, 30)).toBe(true)
+    expect(crocodileAmbushResting(29.99, 30)).toBe(true)
+    // Boundary: the rest ENDS at its expiry — the ambusher is armed again.
+    expect(crocodileAmbushResting(30, 30)).toBe(false)
+    expect(crocodileAmbushResting(31, 30)).toBe(false)
+  })
+
+  it('the gripped lunge expires after gripSeconds so a vanished victim never pins it (point 186)', () => {
+    expect(crocodileGripExpired(4, 8)).toBe(false) // mid-grip, well within the window
+    expect(crocodileGripExpired(8, 8)).toBe(false) // boundary: not yet expired
+    expect(crocodileGripExpired(8.01, 8)).toBe(true) // past the window — release the crocodile
+    // Above the ~5 s caught window, so a normal kill (which ends via the victim's
+    // caught-countdown) is never cut short by the deadline.
+    expect(crocodileGripExpired(5, 8)).toBe(false)
+  })
+
+  it('nothing ever kills a crocodile: killChance is structurally zero for every prey (like the lion)', () => {
+    for (const prey of Object.keys(balance.parentDefense.preyWeapon)) {
+      for (const roll of [0, 0.001, 0.5, 0.999]) {
+        expect(parentAttackOutcome(prey, 'crocodile', roll, balance.parentDefense)).not.toBe('kill')
+      }
+    }
+  })
+
+  it('a strong parent can still drive a crocodile off its victim — kill <= driveOff holds', () => {
+    const pd = balance.parentDefense
+    expect(pd.predatorFlight.crocodile).toBeGreaterThan(0)
+    expect(defendChance('giraffe', 'crocodile', pd)).toBeGreaterThan(defendChance('antelope', 'crocodile', pd))
+    expect(killChance('giraffe', 'crocodile', pd)).toBe(0)
+  })
+})
+
+// The seized victim lies at the crocodile's JAWS and the croc animates as
+// FEEDING (design.md §19.16, point 268) — the prey no longer rests on the
+// croc's back, and the death-roll thrash + gulp bob read the meal as eating.
+describe('crocodile feed depiction (design.md §19.16, point 268)', () => {
+  it('the mouth anchor sits AHEAD of the croc along its heading, not on its centre', () => {
+    // Facing +z (rot 0): the mouth is out at +z, x unchanged.
+    const [x0, z0] = crocodileMouthAnchor(10, 20, 0, 0.55, 1.15)
+    expect(x0).toBeCloseTo(10, 6)
+    expect(z0).toBeGreaterThan(20) // ahead of the croc's centre
+    expect(z0).toBeCloseTo(20 + 1.15 * 0.55, 6)
+    // Facing +x (rot π/2): the mouth is out at +x, z unchanged.
+    const [x1, z1] = crocodileMouthAnchor(10, 20, Math.PI / 2, 0.55, 1.15)
+    expect(x1).toBeGreaterThan(10)
+    expect(x1).toBeCloseTo(10 + 1.15 * 0.55, 6)
+    expect(z1).toBeCloseTo(20, 6)
+    // A larger croc reaches its jaws further out (scale-derived).
+    const [, zBig] = crocodileMouthAnchor(10, 20, 0, 1.2, 1.15)
+    const [, zSmall] = crocodileMouthAnchor(10, 20, 0, 0.55, 1.15)
+    expect(zBig - 20).toBeGreaterThan(zSmall - 20)
+    // The anchor is never the croc's own centre — the victim is at the jaws.
+    expect(Math.hypot(x0 - 10, z0 - 20)).toBeGreaterThan(0.3)
+  })
+
+  it('the feed pose thrashes and gulps within bounded amplitudes (a death-roll + gulp)', () => {
+    let maxRoll = 0
+    let maxPitch = 0
+    let minPitch = Infinity
+    let rollSignChanges = 0
+    let prevSign = 0
+    for (let t = 0; t < 20; t += 0.02) {
+      const p = crocodileFeedPose(t, 0.3)
+      maxRoll = Math.max(maxRoll, Math.abs(p.rollYaw))
+      maxPitch = Math.max(maxPitch, p.pitch)
+      minPitch = Math.min(minPitch, p.pitch)
+      expect(p.pitch).toBeGreaterThanOrEqual(0) // the gulp only ever tips the snout UP
+      expect(p.bobY).toBeGreaterThanOrEqual(0)
+      const s = Math.sign(p.rollYaw)
+      if (s !== 0 && prevSign !== 0 && s !== prevSign) rollSignChanges++
+      if (s !== 0) prevSign = s
+    }
+    // The thrash is a real side-to-side wrench (sign flips), bounded by its amp.
+    expect(rollSignChanges).toBeGreaterThan(5)
+    expect(maxRoll).toBeLessThanOrEqual(CROCODILE_FEED_THRASH_AMP + 1e-9)
+    expect(maxRoll).toBeGreaterThan(CROCODILE_FEED_THRASH_AMP * 0.9)
+    // The gulp reaches its full nose-up and returns to flat.
+    expect(maxPitch).toBeLessThanOrEqual(CROCODILE_FEED_GULP_PITCH + 1e-9)
+    expect(maxPitch).toBeGreaterThan(CROCODILE_FEED_GULP_PITCH * 0.9)
+    expect(minPitch).toBeCloseTo(0, 2)
+  })
+
+  it('stripping the feed motion leaves the plain gripping pose (additive, small)', () => {
+    // At t=0 with phase 0 the pose is (essentially) neutral — the motion is an
+    // additive overlay, so a base render without it is well-formed.
+    const p0 = crocodileFeedPose(0, 0)
+    expect(p0.rollYaw).toBeCloseTo(0, 6)
+    expect(p0.pitch).toBeCloseTo(0, 6)
+    expect(p0.bobY).toBeCloseTo(0, 6)
+  })
+})
+
+// THE KILL GOES INTO THE WATER (design.md §19.16, point 383). Reported from the
+// deployed build: the crocodile stood WHOLLY on the sandy bank feeding, while the
+// carcass lay at the waterline with its head under — the exact inverse of the
+// ambusher that takes its catch back into the river. Nothing tied the two to each
+// other or to the shoreline: the seizure left both where the strike happened and
+// the grip then pulled the CROCODILE to its victim on the bank.
+describe('crocodile drag-into-water and feeding hold (design.md §19.16, point 383)', () => {
+  const SCALE = 0.55
+  const MOUTH = 1.15
+  const DRAG = 5
+  const DT = 1 / 60
+  /** A straight bank: water at x < edge, land beyond — the channel to the -x side. */
+  const bankAt = (edge: number) => (x: number) => x < edge
+  /** A river BAND of the given half-width about x = 0 (the calibratable width
+   *  factor widens exactly this): water inside, land on both banks. */
+  const bandOf = (halfWidth: number) => (x: number) => Math.abs(x) < halfWidth
+
+  /** Run the haul from a seizure until it settles; returns the final pair. */
+  const haulToRest = (
+    croc: { x: number; z: number; rot: number },
+    home: { x: number; z: number },
+    isWater: (x: number, z: number) => boolean,
+    maxSteps = 900,
+  ) => {
+    let c = { ...croc }
+    let victim: [number, number] = [c.x, c.z]
+    let steps = 0
+    let dragging = true
+    while (dragging && steps < maxSteps) {
+      const hold = crocodileHaulStep(c.x, c.z, c.rot, SCALE, home.x, home.z, MOUTH, DRAG, DT, isWater)
+      // Never a teleport: one step covers at most the drag speed's own distance.
+      expect(Math.hypot(hold.x - c.x, hold.z - c.z)).toBeLessThanOrEqual(DRAG * DT + 1e-9)
+      c = { x: hold.x, z: hold.z, rot: hold.rot }
+      victim = [hold.victimX, hold.victimZ]
+      dragging = hold.dragging
+      steps++
+    }
+    return { croc: c, victim, steps, dragging }
+  }
+
+  it('THE REPORTED ARRANGEMENT IS ILLEGAL: crocodile on the sand, carcass in the water', () => {
+    const isWater = (x: number) => bankAt(0)(x)
+    // The screenshot: the croc wholly on land (x > 0), the carcass at the
+    // waterline (x < 0). Both halves wrong, and in opposite directions.
+    expect(crocodileFeedPairValid(1.4, 0, -0.2, 0, SCALE, isWater)).toBe(false)
+    // The inverse arrangement is just as illegal — a carcass left on the bank.
+    expect(crocodileFeedPairValid(-0.6, 0, 0.4, 0, SCALE, isWater)).toBe(false)
+    // Far apart on the same water is no feeding pair either.
+    expect(crocodileFeedPairValid(-1, 0, -1, 9, SCALE, isWater)).toBe(false)
+    // What §19.16 asks for: both in the channel, the catch beside the croc.
+    expect(crocodileFeedPairValid(-1, 0, -1 + MOUTH * SCALE, 0, SCALE, isWater)).toBe(true)
+  })
+
+  it('the PRE-FIX placement fails the rule for every bank strike (the regression case)', () => {
+    // What the code did until point 383: the victim stayed at the strike point
+    // on the bank and the crocodile was pulled to it (0.6 back along its facing).
+    // Both end up on land — the feed on the beach the user photographed.
+    for (let inland = 0.1; inland <= 4; inland += 0.3) {
+      const isWater = bankAt(0)
+      const vx = inland // the bank visitor, on land
+      const preFixCrocX = vx - 0.6 // pulled to the victim, facing +x
+      expect(
+        crocodileFeedPairValid(preFixCrocX, 0, vx, 0, SCALE, (x) => isWater(x)),
+      ).toBe(false)
+    }
+  })
+
+  it('hauls every bank strike back into the water — pair on water, catch at the jaws', () => {
+    for (const edge of [0, 1.5]) { // a plain bank, and the widened river band
+      const isWater = (x: number) => bankAt(edge)(x)
+      for (let inland = 0.1; inland <= 4.001; inland += 0.3) {
+        for (const zOff of [-3, 0, 4]) {
+          const home = { x: edge - 1.2, z: zOff } // the water it lunged from
+          // Where the burst left it: just short of the victim, facing the bank.
+          const vx = edge + inland
+          const rot = Math.atan2(vx - home.x, 0)
+          const croc = { x: vx - 0.85, z: zOff, rot }
+          const out = haulToRest(croc, home, (x) => isWater(x))
+          expect(out.dragging).toBe(false)
+          expect(
+            crocodileFeedPairValid(out.croc.x, out.croc.z, out.victim[0], out.victim[1], SCALE, (x) => isWater(x)),
+          ).toBe(true)
+          // The catch lies AT the jaws (point 268), not on the croc's back.
+          const sep = Math.hypot(out.victim[0] - out.croc.x, out.victim[1] - out.croc.z)
+          expect(sep).toBeCloseTo(MOUTH * SCALE, 6)
+          // And it got there in a haul, not a hop: bounded by the drag deadline.
+          expect(out.steps * DT).toBeLessThan(balance.crocodile.dragSeconds)
+        }
+      }
+    }
+  })
+
+  it('holds the settled pair still — the feed does not wander back out of the water', () => {
+    const isWater = bankAt(0)
+    let c = { x: -1.5, z: 3, rot: Math.PI } // in the channel, facing -x (deeper)
+    const home = { x: -1.5, z: 3 }
+    for (let i = 0; i < 300; i++) {
+      const hold = crocodileHaulStep(c.x, c.z, c.rot, SCALE, home.x, home.z, MOUTH, DRAG, DT, (x) => isWater(x))
+      expect(hold.dragging).toBe(false)
+      expect(hold.x).toBe(c.x)
+      expect(hold.z).toBe(c.z)
+      expect(crocodileFeedPairValid(hold.x, hold.z, hold.victimX, hold.victimZ, SCALE, (x) => isWater(x))).toBe(true)
+      c = { x: hold.x, z: hold.z, rot: hold.rot }
+    }
+  })
+
+  it('resumes the haul when the water moves out from under a feeding pair', () => {
+    // The river width is a calibratable, debug-editable value: a narrowed band
+    // can leave a settled feed on dry land. The hold is re-run every frame, so
+    // the crocodile simply hauls its catch back in rather than eating on sand.
+    const wide = bandOf(3)
+    const narrow = bandOf(1)
+    const home = { x: 0, z: 0 }
+    const settled = crocodileHaulStep(2.4, 0, Math.PI, SCALE, home.x, home.z, MOUTH, DRAG, DT, wide)
+    expect(settled.dragging).toBe(false)
+    const out = haulToRest({ x: settled.x, z: settled.z, rot: settled.rot }, home, narrow)
+    expect(out.dragging).toBe(false)
+    expect(crocodileFeedPairValid(out.croc.x, out.croc.z, out.victim[0], out.victim[1], SCALE, narrow)).toBe(true)
+  })
+
+  it('turns its head onto the water instead of hauling forever in a narrow channel', () => {
+    // A channel barely wider than the crocodile itself: the home water is
+    // reached but the jaws still point at the bank. It turns the head rather
+    // than dragging out the other side — and the haul always terminates.
+    const narrow = bandOf(0.7)
+    const home = { x: 0, z: 0 }
+    const out = haulToRest({ x: 0.4, z: 0, rot: Math.PI / 2 }, home, narrow) // facing +x, at the bank
+    expect(out.dragging).toBe(false)
+    expect(narrow(out.croc.x)).toBe(true)
+    expect(narrow(out.victim[0])).toBe(true)
+    expect(crocodileFeedPairValid(out.croc.x, out.croc.z, out.victim[0], out.victim[1], SCALE, narrow)).toBe(true)
+  })
+
+  it('terminates even where no heading can put the jaws on water', () => {
+    // Degenerate: a puddle smaller than the crocodile's own reach. Nothing can
+    // satisfy the rule, so the haul settles instead of running forever (I4).
+    const puddle = (x: number, z: number) => Math.hypot(x, z) < 0.3
+    const out = haulToRest({ x: 0.05, z: 0, rot: 0 }, { x: 0, z: 0 }, puddle)
+    expect(out.dragging).toBe(false)
+    expect(out.steps).toBeLessThan(200)
+    // And it SAYS so, so the in-game invariant stands down instead of accusing
+    // the placement of a bug the world cannot let it fix.
+    const last = crocodileHaulStep(out.croc.x, out.croc.z, out.croc.rot, SCALE, 0, 0, MOUTH, DRAG, DT, puddle)
+    expect(last.stranded).toBe(true)
+    // A home spot that is no longer water at all strands it too, rather than
+    // hauling forever at a target that cannot help.
+    const dry = crocodileHaulStep(0, 0, 0, SCALE, 0, 0, MOUTH, DRAG, DT, () => false)
+    expect(dry.stranded).toBe(true)
+    expect(dry.dragging).toBe(false)
+    // An ordinary settled feed is never flagged stranded.
+    expect(crocodileHaulStep(-2, 0, Math.PI, SCALE, -2, 0, MOUTH, DRAG, DT, bankAt(0)).stranded).toBe(false)
+  })
+
+  it('a body length is the yardstick — the jaws reach is well inside it', () => {
+    expect(MOUTH).toBeLessThan(CROCODILE_BODY_LENGTH_LOCAL)
+    const isWater = () => true
+    // Just inside its own body length passes, just outside fails.
+    const L = CROCODILE_BODY_LENGTH_LOCAL * SCALE
+    expect(crocodileFeedPairValid(0, 0, L - 0.01, 0, SCALE, isWater)).toBe(true)
+    expect(crocodileFeedPairValid(0, 0, L + 0.01, 0, SCALE, isWater)).toBe(false)
+    // It scales with the animal: a bigger crocodile holds a catch further out.
+    expect(crocodileFeedPairValid(0, 0, L + 0.01, 0, SCALE * 2, isWater)).toBe(true)
+  })
+
+  it('the drag speed and its deadline are calibratable balance values', () => {
+    expect(balance.crocodile.dragSpeed).toBeGreaterThan(0)
+    // A haul of the whole ambush band must fit inside the deadline with margin.
+    expect(balance.crocodile.ambushBankBand / balance.crocodile.dragSpeed).toBeLessThan(
+      balance.crocodile.dragSeconds,
+    )
+  })
+})
+
+// A resting crocodile WAITS — it lies submerged, it does not roam (design.md
+// §19.16). The point-242 idle life must stay a BOUNDED oscillation about a FIXED
+// rest heading, never accumulate: point 257 reported the croc slowly rotating
+// through a full circle because the sway was added to the LIVE heading and fed
+// back in each frame (a running sum of the sine that grew without bound).
+describe('crocodileIdleYaw (design.md §19.16, points 242/257 — a hidden croc waits, it does not spin)', () => {
+  it('stays strictly within the sway amplitude about its fixed rest heading, forever', () => {
+    const restYaw = 1.234
+    const phase = 0.37
+    // A long window (many minutes of play, hundreds of sway periods): the
+    // accumulating bug grew past a full turn within seconds; the absolute
+    // oscillation never leaves the ±amp band no matter how long it runs.
+    for (let t = 0; t < 20000; t += 0.25) {
+      const offset = crocodileIdleYaw(restYaw, t, phase) - restYaw
+      expect(Math.abs(offset)).toBeLessThanOrEqual(CROCODILE_IDLE_SWAY_AMP + 1e-9)
+    }
+  })
+
+  it('oscillates — it returns toward the rest heading rather than growing without bound', () => {
+    const restYaw = -0.5
+    const phase = 0
+    let maxOffset = -Infinity
+    let minOffset = Infinity
+    let signChanges = 0
+    let prevSign = 0
+    // Sample one full period of the 0.3 rad/s sine and a bit beyond.
+    for (let t = 0; t < 30; t += 0.05) {
+      const offset = crocodileIdleYaw(restYaw, t, phase) - restYaw
+      maxOffset = Math.max(maxOffset, offset)
+      minOffset = Math.min(minOffset, offset)
+      const sign = Math.sign(offset)
+      if (sign !== 0 && prevSign !== 0 && sign !== prevSign) signChanges++
+      if (sign !== 0) prevSign = sign
+    }
+    // It swings both ways about centre (returns through it), reaching near ±amp.
+    expect(signChanges).toBeGreaterThan(1)
+    expect(maxOffset).toBeGreaterThan(CROCODILE_IDLE_SWAY_AMP * 0.9)
+    expect(minOffset).toBeLessThan(-CROCODILE_IDLE_SWAY_AMP * 0.9)
+  })
+
+  it('is absolute in restYaw: shifting the rest heading shifts the yaw one-for-one, no drift', () => {
+    // The value depends ONLY on the fixed anchor and the clock — never on a prior
+    // yaw — so it can never integrate a per-frame offset into a rotation.
+    for (const t of [0, 3.3, 51.7]) {
+      const a = crocodileIdleYaw(0, t, 0.2)
+      const b = crocodileIdleYaw(2, t, 0.2)
+      expect(b - a).toBeCloseTo(2, 12)
+    }
+  })
+})
+
+// The crocodile stays COUPLED to its catch (design.md §19.16, point 250): the
+// reported bug was a snapped catch after which the croc swam away while the prey
+// still dissolved on its own — the removal was decoupled from the croc. A
+// gripping crocodile must hold its victim through the whole struggle window AND
+// the sink that follows the kill (the river keeps the body), so the prey's
+// dissolve is DRIVEN BY the croc's feed. It may only slink home / idle once the
+// catch is fully resolved.
+describe('crocodileHoldsCatch — the croc holds its catch until resolved (point 250)', () => {
+  it('an ungripped croc (mid-burst, no catch) holds nothing', () => {
+    // The burst run toward a live victim is governed elsewhere; this predicate
+    // only gates the grip, so without a grip there is nothing to hold.
+    expect(crocodileHoldsCatch(false, 5, false, undefined)).toBe(false)
+    expect(crocodileHoldsCatch(false, undefined, true, 9)).toBe(false)
+  })
+
+  it('holds through the STRUGGLE window while the victim is still caught', () => {
+    expect(crocodileHoldsCatch(true, 5, false, undefined)).toBe(true) // just seized
+    expect(crocodileHoldsCatch(true, 0.1, false, undefined)).toBe(true) // window nearly out
+  })
+
+  it('holds through the SINK: a killed body dissolving in the water keeps the croc coupled', () => {
+    // caught cleared, the body is dead and dissolving — the croc drags it under
+    // (no bank carcass); it must NOT swim off and leave the prey to dissolve alone.
+    expect(crocodileHoldsCatch(true, undefined, true, 9)).toBe(true)
+    expect(crocodileHoldsCatch(true, undefined, true, 0.01)).toBe(true) // still sinking
+  })
+
+  it('releases only once the catch is fully resolved — body gone, or the victim freed', () => {
+    expect(crocodileHoldsCatch(true, undefined, true, 0)).toBe(false) // body fully dissolved
+    expect(crocodileHoldsCatch(true, undefined, true, undefined)).toBe(false) // body removed (gone)
+    // Driven off (point 130): the parent freed the victim — caught cleared, not
+    // dead. The grip's own retreat flag then sends the croc home; the hold is
+    // over here too.
+    expect(crocodileHoldsCatch(true, undefined, false, undefined)).toBe(false)
+  })
+
+  it('the struggle-to-sink-to-done timeline stays continuously coupled, never a gap', () => {
+    // Walk the victim state as a real kill runs: seized -> struggling -> killed &
+    // sinking -> gone. The croc is held at every step until the body is gone, so
+    // there is no frame where it is released while the prey still exists.
+    const timeline: Array<[number | undefined, boolean, number | undefined, boolean]> = [
+      [5, false, undefined, true], // seized, struggling
+      [1, false, undefined, true], // still struggling
+      [undefined, true, 9, true], // killed, body begins to sink
+      [undefined, true, 3, true], // sinking
+      [undefined, true, 0, false], // fully dissolved — released
+    ]
+    for (const [caught, dead, dissolve, held] of timeline) {
+      expect(crocodileHoldsCatch(true, caught, dead, dissolve), `${caught}/${dead}/${dissolve}`).toBe(held)
+    }
+  })
+})
+
+describe('landedBirdY / landedBirdClearance (point 128 — a landed vulture stands on its own ground)', () => {
+  it('flat ground lifts nothing: the bird rests at hover + hop over the base', () => {
+    expect(landedBirdY(2, 2, 0)).toBe(LANDED_BIRD_HOVER)
+    expect(landedBirdY(2, 2, 0.1)).toBeCloseTo(LANDED_BIRD_HOVER + 0.1, 9)
+  })
+
+  it('rising ground lifts by exactly the rise', () => {
+    expect(landedBirdY(2, 2.7, 0)).toBeCloseTo(0.7 + LANDED_BIRD_HOVER, 9)
+    expect(landedBirdY(0, 1.5, 0)).toBeCloseTo(1.5 + LANDED_BIRD_HOVER, 9)
+  })
+
+  it('falling ground never pulls a bird DOWN (positive-only)', () => {
+    expect(landedBirdY(2, 1.2, 0)).toBe(LANDED_BIRD_HOVER)
+    expect(landedBirdY(2, -5, 0)).toBe(LANDED_BIRD_HOVER)
+  })
+
+  it('the hover clears the vulture body sphere reach (~0.096 below origin, buildVulture)', () => {
+    expect(LANDED_BIRD_HOVER).toBeGreaterThan(0.096)
+  })
+
+  it('the clearance above the bird OWN ground is never below the hover — on any slope', () => {
+    for (const base of [0, 0.5, 2, 7]) {
+      for (const ground of [0, 0.2, base - 0.4, base, base + 0.3, base + 1.8]) {
+        expect(landedBirdClearance(base, ground, 0)).toBeGreaterThanOrEqual(LANDED_BIRD_HOVER - 1e-9)
+      }
+    }
+  })
+})
+
+describe('crossingTarget (point 192 — animals may cross rivers/lakes, never the ocean)', () => {
+  // Fake terrain along +z: water for z in (0, 3], land beyond.
+  const riverThenLand = (_x: number, z: number) => (z > 0 && z <= 3 ? 'water' : 'savanna')
+
+  it('finds the far bank across a swimmable channel', () => {
+    const t = crossingTarget(0, 0, 0, 6, riverThenLand) // heading 0 = +z
+    expect(t).not.toBeNull()
+    expect(t!.tz).toBeGreaterThan(3) // past the water, on land
+  })
+
+  it('refuses when the channel is wider than the swim reach', () => {
+    const wide = (_x: number, z: number) => (z > 0 && z <= 9 ? 'water' : 'savanna')
+    expect(crossingTarget(0, 0, 0, 6, wide)).toBeNull()
+  })
+
+  it('refuses the OCEAN anywhere on the line — the sea stays absolute', () => {
+    const toSea = (_x: number, z: number) => (z > 0 && z <= 2 ? 'water' : 'ocean')
+    expect(crossingTarget(0, 0, 0, 6, toSea)).toBeNull()
+  })
+
+  it('a heading over dry land crosses nothing (first step is the bank already)', () => {
+    const t = crossingTarget(0, 0, Math.PI, 6, riverThenLand) // heading away from the water
+    expect(t).not.toBeNull()
+    expect(Math.hypot(t!.tx, t!.tz)).toBeLessThanOrEqual(1.01) // immediate land
+  })
+})
+
+describe('guardEngagement (point 191 — a passing hunt is guarded only while it closes in)', () => {
+  it('engages while the lion closes on the calf inside the radius', () => {
+    let min: number | null = null
+    for (const d of [11, 9, 7, 5]) {
+      const r = guardEngagement(d, min, 12)
+      expect(r.engaged).toBe(true)
+      min = r.minSeen
+    }
+  })
+
+  it('releases once the lion has receded past the slack — the pair never follows the hunt', () => {
+    let min: number | null = null
+    // Approach to closest 5, then recede: engaged until 5 + 0.8 is exceeded.
+    for (const d of [9, 6, 5]) min = guardEngagement(d, min, 12).minSeen
+    expect(guardEngagement(5.6, min, 12).engaged).toBe(true) // within slack
+    min = guardEngagement(5.6, min, 12).minSeen
+    const receded = guardEngagement(6.2, min, 12)
+    expect(receded.engaged).toBe(false) // past minSeen + 0.8 — released
+    // And it STAYS released as the lion runs off (no re-engage on recede).
+    expect(guardEngagement(9, receded.minSeen, 12).engaged).toBe(false)
+  })
+
+  it('resets outside the radius, so the NEXT approach engages fresh', () => {
+    let min: number | null = null
+    for (const d of [9, 4]) min = guardEngagement(d, min, 12).minSeen
+    const out = guardEngagement(13, min, 12)
+    expect(out.engaged).toBe(false)
+    expect(out.minSeen).toBeNull()
+    expect(guardEngagement(10, out.minSeen, 12).engaged).toBe(true) // fresh hunt closes in
+  })
+})
+
+describe('posed landed-bird clearance (points 202 + 217 — the wing span, the yaw and the feeding motion count)', () => {
+  // The y of a local point under the render pose bird.rotation.set(pitch, yaw, 0)
+  // (Euler XYZ, z = 0) — the ACTUAL pose maths the scene applies, not a proxy.
+  const posedY = (pitch: number, yaw: number, [x, y, z]: [number, number, number]) =>
+    Math.sin(pitch) * Math.sin(yaw) * x + Math.cos(pitch) * y - Math.sin(pitch) * Math.cos(yaw) * z
+  // A real outer WING-TIP corner from buildVulture (fauna.ts): the tip box
+  // (0.3,0.02,0.2) at (±1.0,0.12,-0.04) rotated Z by ±0.3 — outer-bottom corner.
+  const WING_TIP: [number, number, number][] = [
+    [1.066, 0.445, 0.06],
+    [1.066, 0.445, -0.14],
+    [-1.066, 0.445, 0.06],
+    [-1.066, 0.445, -0.14],
+  ]
+
+  it('the lowest point is the body bottom at rest, for any heading', () => {
+    // Pitch 0: no pose dip at all — the body sphere bottom (0.096·scale) is lowest.
+    for (const yaw of [0, Math.PI / 2, Math.PI, -1.3]) {
+      expect(landedBirdLowestDepth(0, yaw, 1)).toBeCloseTo(0.096, 9)
+    }
+  })
+
+  it('a spread WING TIP on the yaw low side is the deep end, far past the head-on depth (point 217)', () => {
+    // Facing the carcass (yaw 0) the head/beak leads; broadside (yaw ±90°) swings
+    // a whole wing tip down — much deeper than the head, the reported clip.
+    const headOn = landedBirdLowestDepth(0.9, 0, 1.6)
+    const broadside = landedBirdLowestDepth(0.9, Math.PI / 2, 1.6)
+    expect(broadside).toBeGreaterThan(headOn + 0.3)
+    expect(broadside).toBeGreaterThan(0.8) // the wing tip reaches ~0.9 below origin at 1.6
+    // Deeper with a fuller peck, and symmetric in the yaw sign.
+    expect(broadside).toBeGreaterThan(landedBirdLowestDepth(0.45, Math.PI / 2, 1.6))
+    expect(landedBirdLowestDepth(0.9, -Math.PI / 2, 1.6)).toBeCloseTo(broadside, 9)
+  })
+
+  it('the WING TIP itself (body y − bob dip + wing extent) stays above ground through the bob — both flocks', () => {
+    // The shared rule must clear the actual wing tip, not just the body centre,
+    // at EVERY heading and pitch across the bob — for the ground scavenger (1.5)
+    // AND the kill flock (1.6). On a slope the extent lift adds on top.
+    for (const scale of [1.5, 1.6]) {
+      for (const groupBaseY of [2]) {
+        for (const ground of [2, 2.5, 3.2]) {
+          for (let pi = 0; pi <= 6; pi++) {
+            const pitch = 0.3 + (0.6 * pi) / 6 // 0.3..0.9 covers scav 0.45..0.75 and kill 0.3..0.9
+            for (let yi = 0; yi < 12; yi++) {
+              const yaw = (yi / 12) * Math.PI * 2
+              const originY = groupBaseY + landedBirdYPosed(groupBaseY, ground, 0, pitch, yaw, scale)
+              // World y of the deepest wing-tip corner under this exact pose.
+              let tipWorld = Infinity
+              for (const c of WING_TIP) tipWorld = Math.min(tipWorld, originY + posedY(pitch, yaw, c) * scale)
+              expect(tipWorld).toBeGreaterThanOrEqual(ground - 1e-9)
+            }
+          }
+        }
+      }
+    }
+  })
+
+  it('the posed y keeps the LOWEST point a margin above flat ground through the whole peck, any heading', () => {
+    for (const pitch of [0, 0.45, 0.75, 0.9]) {
+      for (const yaw of [0, 1, Math.PI / 2, 2.5, Math.PI]) {
+        for (const scale of [1.5, 1.6]) {
+          const y = landedBirdYPosed(2, 2, 0, pitch, yaw, scale)
+          const lowestWorld = 2 + y - landedBirdLowestDepth(pitch, yaw, scale)
+          expect(lowestWorld - 2).toBeCloseTo(0.06, 9) // exactly the margin above ground
+        }
+      }
+    }
+  })
+
+  it('ground rising under a WING lifts the whole bird (extent max, never below the margin)', () => {
+    for (const ground of [2, 2.4, 3.1]) {
+      for (const yaw of [0, Math.PI / 2, 2.2]) {
+        expect(landedBirdClearancePosed(2, ground, 0, 0.9, yaw, 1.6)).toBeGreaterThanOrEqual(0.06 - 1e-9)
+      }
+    }
+    // A point-185-style +0.5 group pre-lift bug still reads as a blown cap.
+    expect(landedBirdClearancePosed(2.5, 2, 0, 0.45, 0, 1.5)).toBeGreaterThan(0.5)
+  })
+
+  it('birdExtentOffsets rotates the wing tips and head with the yaw', () => {
+    const at0 = birdExtentOffsets(0, 1)
+    expect(at0[1][0]).toBeCloseTo(1.15, 9) // +x wing tip
+    expect(at0[3][1]).toBeCloseTo(0.24, 9) // head forward on z
+    const at90 = birdExtentOffsets(Math.PI / 2, 1)
+    expect(Math.abs(at90[1][0])).toBeLessThan(1e-9) // tip swung onto the z axis
+    expect(Math.abs(at90[1][1])).toBeCloseTo(1.15, 9)
+  })
+})
+
+describe('rescueSpeed (design.md §19.8, point 127 — the parental adrenaline burst)', () => {
+  it('derives the rescue speed as ordinary walk x burst', () => {
+    expect(rescueSpeed(2, 3)).toBe(6)
+    expect(rescueSpeed(1.5, 3)).toBe(4.5)
+  })
+
+  it('the shipped burst reads as a burst: clearly faster than the ordinary walk', () => {
+    expect(balance.family.rescueBurst).toBeGreaterThan(1)
+    expect(rescueSpeed(balance.family.rescueBurst)).toBeGreaterThan(PREY_WALK_SPEED)
+  })
+
+  it('the shipped burst keeps the drama contracts (the point-127 balance guard)', () => {
+    const v = rescueSpeed(balance.family.rescueBurst)
+    expect(v).toBeGreaterThan(5.6) // the hunter (5.6) still meets the shield it chases
+    expect(v).toBeGreaterThan(3.8) // the shield holds its station against the fleeing calf
+  })
+
+  it('floors at the walk itself: a debug edit can never make a rescue slower than walking', () => {
+    expect(rescueSpeed(0.5, 3)).toBe(3)
+    expect(rescueSpeed(-2, 3)).toBe(3)
+  })
+
+  it('the swollen current brakes the wader: burst / flow factor in the water (point 122 guard)', () => {
+    expect(wadeSpeed(6, 1.8)).toBeCloseTo(6 / 1.8, 6)
+    // The braked wade must stay below the pre-burst 4.2 that let the rains
+    // drown the calf — the drama the burst must not delete.
+    expect(wadeSpeed(rescueSpeed(balance.family.rescueBurst), balance.waterDrama.wetFlowFactor)).toBeLessThan(4.2)
+  })
+
+  it('a tame or dry-season flow never speeds the wader beyond the burst', () => {
+    expect(wadeSpeed(6, 0.6)).toBe(6)
+    expect(wadeSpeed(6, 1)).toBe(6)
+  })
+})
+
+describe('griefTarget (design.md §19 — the parent charges the elephant that trampled its calf)', () => {
+  it('picks the nearest living elephant and carries its heading (point 259)', () => {
+    const near = griefTarget(0, 0, [
+      { x: 20, z: 0, heading: 1 },
+      { x: 4, z: 3, heading: 2 }, // distance 5 — the nearest
+      { x: 0, z: 12, heading: 3 },
+    ])
+    expect(near).toEqual({ x: 4, z: 3, heading: 2 })
+  })
+
+  it('defaults a missing heading to 0', () => {
+    expect(griefTarget(0, 0, [{ x: 4, z: 3 }])).toEqual({ x: 4, z: 3, heading: 0 })
+  })
+
+  it('ignores a dead elephant and takes the next living one', () => {
+    const t = griefTarget(0, 0, [
+      { x: 1, z: 0, dead: true },
+      { x: 9, z: 0, heading: 0.5 },
+    ])
+    expect(t).toEqual({ x: 9, z: 0, heading: 0.5 })
+  })
+
+  it('returns null with no elephants at all — the grief must end, not chase nothing', () => {
+    expect(griefTarget(0, 0, [])).toBeNull()
+  })
+
+  it('returns null when every elephant is dead', () => {
+    expect(griefTarget(0, 0, [{ x: 1, z: 1, dead: true }, { x: 5, z: 5, dead: true }])).toBeNull()
+  })
+
+  it('breaks an exact distance tie by taking the first element (point 173 hardening)', () => {
+    // Both at distance 5 from the origin — a strict "<" comparison means the
+    // FIRST one encountered keeps the pick, never the later tied one.
+    const first = { x: 3, z: 4, heading: 0 }
+    const second = { x: 4, z: 3, heading: 0 }
+    expect(griefTarget(0, 0, [first, second])).toEqual(first)
+    // Reversed order: the (now-first) second element wins instead — proving
+    // the result really tracks list order, not some other tiebreak.
+    expect(griefTarget(0, 0, [second, first])).toEqual(second)
+  })
+
+  it('the parent reaches the elephant FRONT and is trampled well inside the grief window (point 259)', () => {
+    // Mini-simulation of the contract; the numbers mirror Wildlife.tsx
+    // (TRAMPLE_GRIEF_SPEED 6.5, ELEPHANT_SPEED 1.5, TRAMPLE_GRIEF_SECONDS 12,
+    // TRAMPLE_RADIUS 1.5, GRIEF_FRONT_REACH 1). The parent must get IN FRONT of
+    // an elephant walking straight AT it and be crushed only by the direction
+    // condition — otherwise the window would expire and the sacrifice would
+    // silently never happen.
+    const dt = 1 / 60
+    let px = 0
+    let pz = 0
+    const eleph = { x: 10, z: 0, heading: -Math.PI / 2 } // heading (sin,cos)=(-1,0): moving toward the parent along -x
+    let grief = 12
+    let trampled = false
+    while (grief > 0) {
+      const evx = Math.sin(eleph.heading) * 1.5 * dt
+      const evz = Math.cos(eleph.heading) * 1.5 * dt
+      eleph.x += evx
+      eleph.z += evz
+      const t = griefTarget(px, pz, [eleph])
+      expect(t).not.toBeNull()
+      const front = frontInterceptTarget(t!.x, t!.z, t!.heading, 1)
+      const dx = front.x - px
+      const dz = front.z - pz
+      const d = Math.hypot(dx, dz) || 1
+      px += (dx / d) * 6.5 * dt
+      pz += (dz / d) * 6.5 * dt
+      if (
+        Math.hypot(eleph.x - px, eleph.z - pz) < 1.5 &&
+        trampleKills(evx, evz, eleph.x, eleph.z, px, pz)
+      ) {
+        trampled = true
+        break
+      }
+      grief -= dt
+    }
+    expect(trampled).toBe(true)
+    expect(grief).toBeGreaterThan(6) // reached with the window barely touched
+  })
+
+  it('resolves via the deadline when the front can never be reached (invariant I4)', () => {
+    // A parent slower than the elephant can never get in front, so the trample
+    // never fires — but the grief drama STILL resolves at the deadline (the
+    // parent stops and rejoins), never a drive with no exit.
+    const dt = 1 / 60
+    let px = 0
+    let pz = 0
+    const eleph = { x: 5, z: 0, heading: Math.PI / 2 } // (sin,cos)=(1,0): fleeing along +x
+    let grief = 12
+    let trampled = false
+    let resolved = false
+    // Parent SLOWER than the fleeing elephant — the front stays out of reach.
+    const parentSpeed = 1.0
+    const elephSpeed = 6.0
+    while (grief > 0) {
+      const evx = Math.sin(eleph.heading) * elephSpeed * dt
+      const evz = Math.cos(eleph.heading) * elephSpeed * dt
+      eleph.x += evx
+      eleph.z += evz
+      const t = griefTarget(px, pz, [eleph])
+      const front = frontInterceptTarget(t!.x, t!.z, t!.heading, 1)
+      const dx = front.x - px
+      const dz = front.z - pz
+      const d = Math.hypot(dx, dz) || 1
+      px += (dx / d) * parentSpeed * dt
+      pz += (dz / d) * parentSpeed * dt
+      if (
+        Math.hypot(eleph.x - px, eleph.z - pz) < 1.5 &&
+        trampleKills(evx, evz, eleph.x, eleph.z, px, pz)
+      ) {
+        trampled = true
+        break
+      }
+      grief -= dt
+      if (grief <= 0) resolved = true
+    }
+    expect(trampled).toBe(false)
+    expect(resolved).toBe(true) // the deadline backstop ended the grief
+  })
+})
+
+describe('frontInterceptTarget (design.md §19.8 — the grief parent aims at the elephant FRONT, point 259)', () => {
+  it('returns a point ahead of the elephant along its heading, at the given reach', () => {
+    const heading = 0.7
+    const reach = 4
+    const p = frontInterceptTarget(10, -2, heading, reach)
+    // Ahead along the heading unit (sin, cos): the offset dotted with the
+    // heading direction is > 0 and equals the reach.
+    const dx = p.x - 10
+    const dz = p.z - -2
+    const dot = dx * Math.sin(heading) + dz * Math.cos(heading)
+    expect(dot).toBeGreaterThan(0)
+    expect(dot).toBeCloseTo(reach, 10)
+    expect(Math.hypot(dx, dz)).toBeCloseTo(reach, 10)
+  })
+
+  it('points straight ahead for a zero heading', () => {
+    const p = frontInterceptTarget(0, 0, 0, 5) // (sin,cos)=(0,1) → +z
+    expect(p.x).toBeCloseTo(0, 10)
+    expect(p.z).toBeCloseTo(5, 10)
+  })
+})
+
+describe('deflectAroundCircle (design.md §19.5 — the elephant body collider, point 261)', () => {
+  const R = 1.3 // an elephant body radius
+
+  it('slides a step aimed straight THROUGH the body around it (never inside, keeps moving)', () => {
+    // From directly behind the body to directly ahead of it — the straight path
+    // passes through the centre. The result must NOT land inside the circle and
+    // must make lateral (tangential) progress rather than stopping dead.
+    const [ex, ez] = deflectAroundCircle(0, -2, 0, 2, 0, 0, R)
+    expect(Math.hypot(ex, ez)).toBeGreaterThanOrEqual(R)
+    // Slid sideways off the centre line (went AROUND), and did not just rest at
+    // the start point.
+    expect(Math.abs(ex)).toBeGreaterThan(0.1)
+    expect(Math.hypot(ex - 0, ez - -2)).toBeGreaterThan(0.1)
+  })
+
+  it('leaves a step that never touches the body unchanged', () => {
+    // A step well to the side of the body: returned verbatim.
+    const [ex, ez] = deflectAroundCircle(5, -1, 5, 3, 0, 0, R)
+    expect(ex).toBe(5)
+    expect(ez).toBe(3)
+  })
+
+  it('leaves a step that only grazes past (closest approach ≥ radius) unchanged', () => {
+    // Passes at x = R exactly — tangent, does not enter.
+    const [ex, ez] = deflectAroundCircle(R, -2, R, 2, 0, 0, R)
+    expect(ex).toBe(R)
+    expect(ez).toBe(2)
+  })
+
+  it('de-penetrates a step that ENDS inside the body out to its edge', () => {
+    // The elephant walked onto a nearly-still grazer: its tiny step ends inside
+    // the body. The collider pushes it back out to the surface (never inside).
+    const [ex, ez] = deflectAroundCircle(0.4, -0.4, 0.5, -0.3, 0, 0, R)
+    expect(Math.hypot(ex, ez)).toBeGreaterThanOrEqual(R - 1e-9)
+  })
+
+  it('lets the grief parent ROUTE AROUND the body to the front and be crushable — no stall', () => {
+    // Replays the grief charge (points 259/261): the parent starts BEHIND the
+    // elephant and each frame aims at the front-intercept point (reach 1, which
+    // is INSIDE the body circle), stepping at the grief speed. With the collider
+    // it must round the body and, at some frame, stand within the trample reach
+    // AHEAD of the elephant (where the moving elephant would crush it) — proving
+    // it neither clips through nor stalls behind. It never enters the body.
+    const SPEED = 6.5 // TRAMPLE_GRIEF_SPEED
+    const REACH = 1 // GRIEF_FRONT_REACH
+    const TRAMPLE = 1.5 // TRAMPLE_RADIUS
+    const dt = 0.1
+    let px = 0
+    let pz = -3 // behind an elephant at the origin heading +z (sin,cos)=(0,1)
+    let crushable = false
+    for (let i = 0; i < 400; i++) {
+      const front = frontInterceptTarget(0, 0, 0, REACH) // (0, 1)
+      const dx = front.x - px
+      const dz = front.z - pz
+      const d = Math.hypot(dx, dz) || 1
+      const tx = px + (dx / d) * SPEED * dt
+      const tz = pz + (dz / d) * SPEED * dt
+      ;[px, pz] = deflectAroundCircle(px, pz, tx, tz, 0, 0, R)
+      // Never inside the body.
+      expect(Math.hypot(px, pz)).toBeGreaterThanOrEqual(R - 1e-6)
+      // Within the trample reach AND ahead of the elephant → the moving elephant
+      // (travelling +z) would crush it here (trampleKills holds for a +z victim).
+      if (Math.hypot(px, pz) <= TRAMPLE && pz > 0) crushable = true
+    }
+    expect(crushable).toBe(true)
+  })
+})
+
+describe('trampleKills (design.md §19.5 — the trample direction condition, point 259)', () => {
+  it('kills when the elephant moves with a positive component toward the victim', () => {
+    // Elephant at origin moving +x; victim ahead at +x → dot > 0.
+    expect(trampleKills(0.02, 0, 0, 0, 3, 0)).toBe(true)
+  })
+
+  it('does NOT kill a victim a STANDING elephant is bumped into (speed ~0)', () => {
+    expect(trampleKills(0, 0, 0, 0, 1, 0)).toBe(false)
+    expect(trampleKills(1e-6, 0, 0, 0, 1, 0)).toBe(false) // below the epsilon
+  })
+
+  it('does NOT kill a victim hit from BEHIND the heading of travel (dot < 0)', () => {
+    // Elephant moving +x; victim BEHIND at -x → dot < 0.
+    expect(trampleKills(0.02, 0, 0, 0, -3, 0)).toBe(false)
+  })
+
+  it('does NOT kill on a purely lateral pass (dot = 0, the boundary)', () => {
+    // Elephant moving +x; victim off to the side at +z → dot = 0.
+    expect(trampleKills(0.02, 0, 0, 0, 0, 3)).toBe(false)
+  })
+
+  it('kills a victim in the forward arc (partial positive component)', () => {
+    // Moving +x, victim ahead-and-to-the-side: dot still > 0.
+    expect(trampleKills(0.02, 0, 0, 0, 2, 5)).toBe(true)
+  })
+})
+
+describe('elephantWouldTrample (design.md §19.5 — the collider trample exemption, point 263)', () => {
+  const TRAMPLE = 1.5 // TRAMPLE_RADIUS
+  const R = 1.3 // an elephant body radius
+
+  it('is true for an animal in range the elephant is moving TOWARD (it is about to trample it)', () => {
+    // Elephant at origin moving +x; victim 1 unit ahead, inside the reach.
+    expect(elephantWouldTrample(0.02, 0, 0, 0, 1, 0, TRAMPLE)).toBe(true)
+  })
+
+  it('is false outside the trample reach even when moving toward the animal', () => {
+    // Same +x drive, but the animal is 2 units away — beyond 1.5.
+    expect(elephantWouldTrample(0.02, 0, 0, 0, 2, 0, TRAMPLE)).toBe(false)
+  })
+
+  it('is false in range when the elephant is STANDING (no bearing-down velocity)', () => {
+    expect(elephantWouldTrample(0, 0, 0, 0, 1, 0, TRAMPLE)).toBe(false)
+    expect(elephantWouldTrample(1e-6, 0, 0, 0, 1, 0, TRAMPLE)).toBe(false)
+  })
+
+  it('is false in range when the elephant moves AWAY from the animal (dot ≤ 0)', () => {
+    expect(elephantWouldTrample(0.02, 0, 0, 0, -1, 0, TRAMPLE)).toBe(false) // behind
+    expect(elephantWouldTrample(0.02, 0, 0, 0, 0, 1, TRAMPLE)).toBe(false) // lateral, dot = 0
+  })
+
+  it('EXEMPTS the bearing-down victim from the collider while a non-trampling elephant still deflects', () => {
+    // The point-263 fix as the render loop applies it: an animal the elephant
+    // WOULD trample this step keeps its step (no deflection → the trample fires);
+    // an animal near a NON-trampling (here stationary) elephant is still slid
+    // AROUND the body (no walk-through). One free animal, two elephant states.
+    const from: [number, number] = [0, -1]
+    const to: [number, number] = [0, 0.5] // a step that would pass through the body at the origin
+
+    // (a) The elephant bears down on it (moving +z toward the animal's end point,
+    //     which sits within the trample reach). Exempt → the step lands unchanged.
+    const drivingVel: [number, number] = [0, 0.02]
+    const exempt = elephantWouldTrample(drivingVel[0], drivingVel[1], 0, 0, to[0], to[1], TRAMPLE)
+    expect(exempt).toBe(true)
+    const kept = exempt ? to : deflectAroundCircle(from[0], from[1], to[0], to[1], 0, 0, R)
+    expect(kept).toEqual(to) // NOT deflected — stays where the trample catches it
+
+    // (b) The same animal near a STANDING elephant: not a trample → it slides
+    //     around the body and never rests inside it.
+    const stillVel: [number, number] = [0, 0]
+    const notTrample = elephantWouldTrample(stillVel[0], stillVel[1], 0, 0, to[0], to[1], TRAMPLE)
+    expect(notTrample).toBe(false)
+    const slid = notTrample ? to : deflectAroundCircle(from[0], from[1], to[0], to[1], 0, 0, R)
+    expect(slid).not.toEqual(to) // deflected
+    expect(Math.hypot(slid[0], slid[1])).toBeGreaterThanOrEqual(R - 1e-9) // outside the body
+  })
+})
+
+describe('gambolState (design.md §19 — playful calf hop-bouts)', () => {
+  it('is idle outside the bout window and active inside it', () => {
+    // phase 0: the bout is the first quarter of the 16 s cycle.
+    expect(gambolState(8, 0)).toBeNull() // cycle 0.5 — idle
+    expect(gambolState(15, 0)).toBeNull() // cycle ~0.94 — idle
+    const bout = gambolState(1, 0) // cycle ~0.06 — playing
+    expect(bout).not.toBeNull()
+    expect(bout!.hop).toBeGreaterThanOrEqual(0)
+    expect(bout!.hop).toBeLessThanOrEqual(1)
+  })
+
+  it('phase-shifts the bouts so herd-mates do not all play at once', () => {
+    expect(gambolState(8, 0)).toBeNull()
+    expect(gambolState(8, 0.2)).not.toBeNull() // 8 + 0.2*40 = 16 → cycle 0
+  })
+
+  it('is deterministic and curves over the bout (heading varies)', () => {
+    const a1 = gambolState(0.2, 0)
+    const a2 = gambolState(0.2, 0)
+    expect(a1).toEqual(a2)
+    const b = gambolState(1.75, 0) // near the bend's peak of the same bout
+    expect(a1).not.toBeNull()
+    expect(b).not.toBeNull()
+    expect(Math.abs(a1!.heading - b!.heading)).toBeGreaterThan(0.3)
+  })
+})
+
+describe('separationPush (design.md §19 — animal body separation)', () => {
+  it('returns zero when nothing overlaps', () => {
+    expect(separationPush(0, 0, [[3, 0, 2]])).toEqual([0, 0])
+    expect(separationPush(0, 0, [])).toEqual([0, 0])
+  })
+
+  it('pushes half-way out of a single overlap, directly apart', () => {
+    const [dx, dz] = separationPush(0, 0, [[1, 0, 2]])
+    expect(dx).toBeCloseTo(-0.5, 6) // overlap 1, own half 0.5, away from neighbour
+    expect(dz).toBeCloseTo(0, 6)
+  })
+
+  it('parts coincident animals instead of dividing by zero', () => {
+    const [dx, dz] = separationPush(2, 2, [[2, 2, 1.5]])
+    expect(dx).toBeCloseTo(0.75, 6)
+    expect(dz).toBeCloseTo(0, 6)
+  })
+
+  it('sums the pushes of several overlapping neighbours', () => {
+    // Symmetric flankers cancel; two on the same side add up.
+    const [cx] = separationPush(0, 0, [[1, 0, 2], [-1, 0, 2]])
+    expect(cx).toBeCloseTo(0, 6)
+    const [sx] = separationPush(0, 0, [[1, 0, 2], [0.5, 0, 2]])
+    expect(sx).toBeCloseTo(-1.25, 6) // -0.5 and -0.75
+  })
+
+  it('mutual application separates a pair to the full distance', () => {
+    // Both members resolve their own half per frame — iterating parts them.
+    let ax = 0
+    let bx = 0.4
+    for (let i = 0; i < 8; i++) {
+      const [pa] = separationPush(ax, 0, [[bx, 0, 1.4]])
+      const [pb] = separationPush(bx, 0, [[ax, 0, 1.4]])
+      ax += pa
+      bx += pb
+      if (Math.abs(bx - ax) >= 1.4) break
+    }
+    expect(Math.abs(bx - ax)).toBeGreaterThanOrEqual(1.4 - 1e-6)
+  })
+})
+
+describe('edgeSeparationPush (design.md §19.5, point 222 — parting a pair pinned at a water edge)', () => {
+  // The reported bug: two animals overlap at a waterline and STAY, because the
+  // water setback reverts any push that points into the water every frame. Model
+  // a thin shore strip [-0.4, 0] on the x axis: impassable water fills x > 0
+  // (inward normal (1,0)) and an inland wall fills x < -0.4. Two animals trapped
+  // in the strip are too close along x to part along the normal — they must
+  // resolve along the shore tangent (z) or stay interpenetrating.
+  const minD = 1.0
+  const clampToStrip = (x: number): number => Math.max(-0.4, Math.min(0, x))
+
+  it('a plain separation STALLS at the edge — the setback reverts every blocked push', () => {
+    let a = { x: 0, z: 0 } // at the waterline
+    let b = { x: -0.4, z: 0 } // against the inland wall
+    for (let f = 0; f < 400; f++) {
+      const [pax, paz] = separationPush(a.x, a.z, [[b.x, b.z, minD]])
+      const [pbx, pbz] = separationPush(b.x, b.z, [[a.x, a.z, minD]])
+      a = { x: clampToStrip(a.x + pax), z: a.z + paz }
+      b = { x: clampToStrip(b.x + pbx), z: b.z + pbz }
+    }
+    // Never parts: both pushes are along x, both reverted by the strip clamp.
+    expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeLessThan(minD)
+  })
+
+  it('resolves along the shore tangent so the pinned pair parts within bounded steps', () => {
+    let a = { x: 0, z: 0 }
+    let b = { x: -0.4, z: 0 }
+    let parted = -1
+    for (let f = 0; f < 400; f++) {
+      // The waterline animal sees water beside it (normal (1,0)); the wall animal
+      // has no water beside it (null → plain push, clamped by the wall).
+      const [pax, paz] = edgeSeparationPush(a.x, a.z, [[b.x, b.z, minD]], [1, 0])
+      const [pbx, pbz] = edgeSeparationPush(b.x, b.z, [[a.x, a.z, minD]], null)
+      a = { x: clampToStrip(a.x + pax), z: a.z + paz }
+      b = { x: clampToStrip(b.x + pbx), z: b.z + pbz }
+      if (Math.hypot(a.x - b.x, a.z - b.z) >= minD - 1e-6) {
+        parted = f
+        break
+      }
+    }
+    expect(parted).toBeGreaterThanOrEqual(0) // parted…
+    expect(parted).toBeLessThan(400) // …within the bounded step budget
+  })
+
+  it('leaves an away-from-water push unchanged (only the into-water half is redirected)', () => {
+    // Neighbour at +x pushes the subject toward -x; the water is at +x, so the
+    // push already leads away from it — identical to the plain separationPush.
+    const plain = separationPush(0, 0, [[1, 0, 2]])
+    const edged = edgeSeparationPush(0, 0, [[1, 0, 2]], [1, 0])
+    expect(edged).toEqual(plain)
+  })
+
+  it('redirects a purely into-water push onto the tangent (never zero, never into the water)', () => {
+    // Neighbour directly inland (−x): the raw push is straight +x, into the water.
+    const n: [number, number] = [1, 0]
+    const [dx, dz] = edgeSeparationPush(0, 0, [[-1, 0, 2]], n)
+    expect(dx * n[0] + dz * n[1]).toBeLessThanOrEqual(1e-9) // no into-water component left
+    expect(Math.hypot(dx, dz)).toBeGreaterThan(0.1) // and it still moves (along the shore)
+  })
+})
+
+describe('segPointDist (point 179 — the swept predator catch)', () => {
+  it('is ~0 for a point on the segment and clamps beyond the endpoints', () => {
+    expect(segPointDist(0, 0, 10, 0, 5, 0)).toBeCloseTo(0, 6)
+    expect(segPointDist(0, 0, 10, 0, 12, 0)).toBeCloseTo(2, 6)
+    expect(segPointDist(0, 0, 10, 0, -3, 0)).toBeCloseTo(3, 6)
+  })
+
+  it('catches a target the hunter SWEEPS through when both endpoints are far (tunnelling)', () => {
+    // Hunter moves (-2,0) -> (2,0) past a calf at (0, 0.5): the move segment
+    // passes 0.5 from it (a catch within radius 0.9), while the point distance at
+    // EITHER endpoint is ~2.06 — the old per-frame point check tunnelled through.
+    expect(segPointDist(-2, 0, 2, 0, 0, 0.5)).toBeCloseTo(0.5, 6)
+    expect(Math.hypot(2, 0.5)).toBeGreaterThan(0.9) // the endpoint point-check misses
+    expect(Math.hypot(-2, 0.5)).toBeGreaterThan(0.9)
+  })
+})
+
+describe('flightStep (design.md §19 — vultures fly in and off, never pop)', () => {
+  const mk = (): FlightState => ({ mode: 'idle', x: 0, z: 0 })
+
+  it('spawns beyond the view ring on the far side of the target', () => {
+    const s = mk()
+    flightStep(s, true, 10, 0, 0, 0, 100, 16, 1 / 60)
+    expect(s.mode).toBe('in')
+    expect(s.x).toBeCloseTo(100 + FLIGHT_SPAWN_OUT, 6)
+    expect(s.z).toBeCloseTo(0, 6)
+  })
+
+  it('spawns at a fixed ring point when the target sits on the player', () => {
+    const s = mk()
+    flightStep(s, true, 0, 0, 0, 0, 100, 16, 1 / 60)
+    expect(s.mode).toBe('in')
+    expect(Math.hypot(s.x, s.z)).toBeCloseTo(100 + FLIGHT_SPAWN_OUT, 6)
+  })
+
+  it('pushes the spawn OFF the rendered frame when a frustum predicate is given (point 178)', () => {
+    // The assumed ring underestimates the tilted bird's-eye frustum's ground
+    // reach; with an on-screen predicate the spawn is pushed out in ring steps
+    // until it clears the frame, so the bird flies in instead of popping in.
+    // Here the frame reaches 200 units while the ring is only 100 (viewR).
+    const s = mk()
+    const isOff = (x: number, z: number) => Math.hypot(x, z) > 200
+    flightStep(s, true, 30, 0, 0, 0, 100, 16, 1 / 60, 0.6, isOff)
+    expect(s.mode).toBe('in')
+    expect(isOff(s.x, s.z)).toBe(true) // spawned beyond the frame
+  })
+
+  it('keeps the ring spawn when the predicate already reports off-screen (no camera)', () => {
+    // isOnScreen defaults to "everything off-screen" with no travel camera, so
+    // the ring point is already clear and the spawn is not pushed further.
+    const s = mk()
+    flightStep(s, true, 10, 0, 0, 0, 100, 16, 1 / 60, 0.6, () => true)
+    expect(s.x).toBeCloseTo(100 + FLIGHT_SPAWN_OUT, 6)
+  })
+
+  it('flies in, arrives (active), and stays while wanted', () => {
+    const s = mk()
+    flightStep(s, true, 10, 0, 0, 0, 100, 16, 1 / 60)
+    const d0 = Math.hypot(s.x - 10, s.z)
+    for (let i = 0; i < 60 * 20 && s.mode === 'in'; i++) flightStep(s, true, 10, 0, 0, 0, 100, 16, 1 / 60)
+    expect(s.mode).toBe('active')
+    expect(Math.hypot(s.x - 10, s.z)).toBeLessThan(d0)
+    flightStep(s, true, 10, 0, 0, 0, 100, 16, 1 / 60)
+    expect(s.mode).toBe('active')
+  })
+
+  it('flies off when no longer wanted and despawns only well outside the view', () => {
+    const s: FlightState = { mode: 'active', x: 10, z: 0 }
+    let lastOutDist = 0
+    for (let i = 0; i < 60 * 30 && s.mode !== 'idle'; i++) {
+      flightStep(s, false, 10, 0, 0, 0, 100, 16, 1 / 60)
+      if (s.mode === 'out') lastOutDist = Math.hypot(s.x, s.z)
+    }
+    expect(s.mode).toBe('idle')
+    expect(lastOutDist).toBeGreaterThan(100 + FLIGHT_DESPAWN_OUT - 1)
+  })
+
+  it('retargets while still airborne instead of respawning', () => {
+    const s: FlightState = { mode: 'out', x: 50, z: 0 }
+    flightStep(s, true, 10, 0, 0, 0, 100, 16, 1 / 60)
+    expect(s.mode).toBe('in')
+    expect(Math.hypot(s.x - 50, s.z)).toBeLessThan(1) // kept its position
+  })
+})
+
+describe('turnToward', () => {
+  it('caps the step and takes the shorter way around the circle', () => {
+    expect(turnToward(0, 1, 0.1)).toBeCloseTo(0.1, 6)
+    expect(turnToward(0, -1, 0.1)).toBeCloseTo(-0.1, 6)
+    // Wrap: from just below +π toward just above -π goes forward, not all the way back.
+    const r = turnToward(3.0, -3.0, 0.2)
+    expect(r).toBeCloseTo(3.2, 6)
+  })
+
+  it('reaches the target when within one step', () => {
+    expect(turnToward(0, 0.05, 0.2)).toBeCloseTo(0.05, 6)
+  })
+})
+
+describe('leashedGambolDir (design.md §19 — the scamper orbits its parent)', () => {
+  // The shipped, calibratable leash values (design.md §19.8): 3× the original
+  // 1.8 leash / 4 play range, so the family dramas read spatially. The bout
+  // derivation mirrors Wildlife.tsx (calibratable bout + fixed 12 s idle gap).
+  const GAMBOL_RANGE = balance.family.gambolRange
+  const GAMBOL_SPEED = 2.2
+  const YOUNG_FOLLOW_SPEED = 4.5
+  const YOUNG_FOLLOW_RADIUS = balance.family.followRadius
+  const GAMBOL_IDLE_SECONDS = 12
+  const PERIOD = balance.family.gambolBoutSeconds + GAMBOL_IDLE_SECONDS
+  const ACTIVE = balance.family.gambolBoutSeconds / PERIOD
+
+  it('ships the widened leash: 1.5× the point-238 follow radius and play range (point 245)', () => {
+    // Point 245 scales both by ×1.5 again, from the point-238 values (3× the
+    // originals): followRadius 5.4 → 8.1, gambolRange 12 → 18.
+    expect(balance.family.followRadius).toBeCloseTo(1.5 * 5.4, 10) // 8.1
+    expect(balance.family.gambolRange).toBeCloseTo(1.5 * 12, 10) // 18
+  })
+
+  it('a hop-bout runs the full calibratable length — longer than the old 4 s bout', () => {
+    expect(balance.family.gambolBoutSeconds).toBeGreaterThan(4)
+    // Play is continuous through the whole widened bout window (phase 0 puts
+    // the bout at the cycle start) …
+    for (let t = 0.1; t < balance.family.gambolBoutSeconds - 0.05; t += 0.5) {
+      expect(gambolState(t, 0, PERIOD, ACTIVE), `t=${t}`).not.toBeNull()
+    }
+    // … while the OLD default bout (16 s × 0.25 = 4 s) was already over at 6 s,
+    // and the widened bout still ends (idle follows).
+    expect(gambolState(6, 0)).toBeNull()
+    expect(gambolState(balance.family.gambolBoutSeconds + 0.2, 0, PERIOD, ACTIVE)).toBeNull()
+  })
+
+  it('the rescue burst still closes the widened leash within the caught window (point 245)', () => {
+    // Worst case: the calf is caught at the far edge of the play range with the
+    // parent on the opposite side. The charge must cover that gap — plus the
+    // too-late band as slack — well inside the 5 s struggle window
+    // (CAUGHT_DURATION / PARENT_TOO_LATE_DIST in Wildlife.tsx), so the
+    // sacrifice/shield/too-late outcomes all stay reachable at the wider spacing.
+    // At gambolRange 18 the worst gap is 18 + 3.2 = 21.2, still well inside the
+    // burst-cover 6 units/s × 5 s = 30 (the point-238 head-room was 15.2 vs 30;
+    // point 245 leaves ~30% margin), so no reach distance needs widening.
+    const CAUGHT_DURATION = 5
+    const PARENT_TOO_LATE_DIST = 3.2
+    const worstGap = balance.family.gambolRange + PARENT_TOO_LATE_DIST
+    const burstCover = rescueSpeed(balance.family.rescueBurst) * CAUGHT_DURATION
+    expect(burstCover).toBeGreaterThan(worstGap) // the charge closes the gap
+    expect(burstCover).toBeGreaterThan(worstGap * 1.3) // …with a real safety margin
+  })
+
+  it('plays freely near the parent (the leash barely bends the heading)', () => {
+    for (const h of [0, 1.2, Math.PI, -2]) {
+      const [dx, dz] = leashedGambolDir(h, 0.5, 0.5, 0.7, GAMBOL_RANGE)
+      const dot = dx * Math.sin(h) + dz * Math.cos(h)
+      expect(dot, `heading ${h}`).toBeGreaterThan(0.9) // nearly the bout direction
+    }
+  })
+
+  it('never steps outward at the range edge, for EVERY bout heading', () => {
+    for (let i = 0; i < 16; i++) {
+      const h = (i / 16) * Math.PI * 2
+      // Parent sits at the origin, calf at range distance east: outward is
+      // +x, and the damped step must carry none of it at the edge.
+      const [dx] = leashedGambolDir(h, -GAMBOL_RANGE, 0, GAMBOL_RANGE, GAMBOL_RANGE)
+      expect(dx, `heading ${h}`).toBeLessThanOrEqual(1e-9)
+    }
+  })
+
+  it('returns a finite unit direction in the degenerate cases', () => {
+    for (const [tx, tz, d] of [
+      [0, 0, 0],
+      [1e-9, 0, 1e-9],
+    ] as const) {
+      const [dx, dz] = leashedGambolDir(1, tx, tz, d, GAMBOL_RANGE)
+      expect(Number.isFinite(dx) && Number.isFinite(dz)).toBe(true)
+      expect(Math.hypot(dx, dz)).toBeLessThanOrEqual(1 + 1e-9)
+    }
+  })
+
+  // Frame-loop simulation in the shape of the real integrator: the calf must
+  // never leave the play range mid-bout (so the follow yank never alternates
+  // with play), and its step direction must not saw back and forth. At the
+  // widened leash it must also genuinely USE the room — reaching clearly
+  // beyond the old 1.8 leash — while the anti-jitter damping holds unchanged
+  // (it has no cancellation point at any range).
+  it('a full simulated bout stays leashed with no direction sawtooth', () => {
+    const dt = 1 / 60
+    let x = 0.5
+    let z = 0
+    const parent = { x: 0, z: 0 }
+    let prevStepX: number | null = null
+    let prevStepZ: number | null = null
+    let flips = 0
+    let steps = 0
+    let maxDist = 0
+    for (let f = 0; f < 3600; f++) {
+      const t = f * dt
+      const bout = gambolState(t, 0.37, PERIOD, ACTIVE)
+      const toX = parent.x - x
+      const toZ = parent.z - z
+      const d = Math.hypot(toX, toZ)
+      if (bout) {
+        const [sx, sz] = leashedGambolDir(bout.heading, toX, toZ, d, GAMBOL_RANGE)
+        x += sx * GAMBOL_SPEED * dt
+        z += sz * GAMBOL_SPEED * dt
+        if (prevStepX !== null && prevStepZ !== null && sx * prevStepX + sz * prevStepZ < 0) flips++
+        prevStepX = sx
+        prevStepZ = sz
+        steps++
+      } else {
+        prevStepX = null
+        prevStepZ = null
+        if (d > YOUNG_FOLLOW_RADIUS) {
+          x += (toX / d) * YOUNG_FOLLOW_SPEED * dt
+          z += (toZ / d) * YOUNG_FOLLOW_SPEED * dt
+        }
+      }
+      maxDist = Math.max(maxDist, Math.hypot(x - parent.x, z - parent.z))
+    }
+    expect(steps).toBeGreaterThan(400) // the bout actually ran
+    expect(maxDist).toBeLessThanOrEqual(GAMBOL_RANGE + 0.05) // leashed — never past the edge
+    expect(maxDist).toBeGreaterThan(YOUNG_FOLLOW_RADIUS) // the widened room is really used (≫ the old 1.8)
+    expect(flips / Math.max(1, steps)).toBeLessThan(0.02) // no per-frame sawtooth
+  })
+
+  it('the OLD unleashed range-switch genuinely sawtoothed (regression witness)', () => {
+    // Pinned to the ORIGINAL constants (range 4, leash 1.8, 4 s default bout):
+    // this documents the historical bug the leash damping fixed.
+    const OLD_RANGE = 4
+    const OLD_FOLLOW_RADIUS = 1.8
+    const dt = 1 / 60
+    let x = 0.5
+    let z = 0
+    let prevStepX: number | null = null
+    let prevStepZ: number | null = null
+    let flips = 0
+    let steps = 0
+    for (let f = 0; f < 3600; f++) {
+      const t = f * dt
+      const d = Math.hypot(x, z)
+      const bout = d <= OLD_RANGE ? gambolState(t, 0.37) : null
+      if (bout) {
+        const sx = Math.sin(bout.heading)
+        const sz = Math.cos(bout.heading)
+        x += sx * GAMBOL_SPEED * dt
+        z += sz * GAMBOL_SPEED * dt
+        if (prevStepX !== null && prevStepZ !== null && sx * prevStepX + sz * prevStepZ < 0) flips++
+        prevStepX = sx
+        prevStepZ = sz
+        steps++
+      } else {
+        if (d > OLD_FOLLOW_RADIUS) {
+          const sx = -x / d
+          const sz = -z / d
+          x += sx * YOUNG_FOLLOW_SPEED * dt
+          z += sz * YOUNG_FOLLOW_SPEED * dt
+          if (prevStepX !== null && prevStepZ !== null && sx * prevStepX + sz * prevStepZ < 0) flips++
+          prevStepX = sx
+          prevStepZ = sz
+          steps++
+        } else {
+          prevStepX = null
+          prevStepZ = null
+        }
+      }
+    }
+    expect(flips / Math.max(1, steps)).toBeGreaterThan(0.05) // the boundary buzz the fix removes
+  })
+})
+
+describe('clamped separation (design.md §19 — a force, not a teleport)', () => {
+  const SEPARATION_MAX_SPEED = 2.2
+
+  it('parts an overlapping pair smoothly and monotonically', () => {
+    const dt = 1 / 60
+    let ax = 0
+    let bx = 0.4 // deep overlap, minDist 1.4
+    let prevGap = bx - ax
+    for (let f = 0; f < 240; f++) {
+      const [pa] = separationPush(ax, 0, [[bx, 0, 1.4]])
+      const [pb] = separationPush(bx, 0, [[ax, 0, 1.4]])
+      const cap = SEPARATION_MAX_SPEED * dt
+      ax += Math.max(-cap, Math.min(cap, pa))
+      bx += Math.max(-cap, Math.min(cap, pb))
+      const gap = bx - ax
+      expect(gap).toBeGreaterThanOrEqual(prevGap - 1e-9) // monotone, no overshoot back
+      prevGap = gap
+    }
+    expect(prevGap).toBeGreaterThanOrEqual(1.4 - 1e-6) // fully parted…
+    expect(prevGap).toBeLessThan(1.5) // …but not flung apart
+  })
+
+  it('a clamped push never exceeds the walking pace in one frame', () => {
+    const dt = 1 / 60
+    const [dx, dz] = separationPush(0, 0, [[0.01, 0, 2.0]])
+    const m = Math.hypot(dx, dz)
+    const cap = SEPARATION_MAX_SPEED * dt
+    const k = m > cap ? cap / m : 1
+    expect(Math.hypot(dx * k, dz * k)).toBeLessThanOrEqual(cap + 1e-9)
+  })
+})
+
+describe('killFlockMayDescend (design.md §19.6 — land once the site is clear)', () => {
+  it('never lands while the predator feeds', () => {
+    expect(killFlockMayDescend('feed', 0, 0, 0, 0)).toBe(false)
+    expect(killFlockMayDescend('feed', 100, 100, 0, 0)).toBe(false)
+  })
+
+  it('during the walk-off it lands as soon as the predator cleared the site', () => {
+    expect(killFlockMayDescend('leave', 5, 0, 0, 0)).toBe(false) // still close
+    expect(killFlockMayDescend('leave', VULTURE_DESCEND_CLEAR_DIST + 1, 0, 0, 0)).toBe(true)
+  })
+
+  it('a gone predator frees the site immediately', () => {
+    expect(killFlockMayDescend('idle', 0, 0, 0, 0)).toBe(true)
+  })
+})
+
+describe('killFlockActive (design.md §19.6, point 162 — no flock over a drive-off)', () => {
+  it('circles while the predator feeds, remnant or not', () => {
+    expect(killFlockActive('feed', false)).toBe(true)
+    expect(killFlockActive('feed', true)).toBe(true)
+  })
+
+  it('during the walk-off it stays only for a real kill (a remnant)', () => {
+    expect(killFlockActive('leave', true)).toBe(true) // feed->leave: a scrap to finish
+    expect(killFlockActive('leave', false)).toBe(false) // DRIVE-OFF: no kill, no flock
+  })
+
+  it('a drive-off / no-kill idle draws no flock, but a leftover scrap does', () => {
+    expect(killFlockActive('idle', false)).toBe(false)
+    expect(killFlockActive('idle', true)).toBe(true)
+  })
+})
+
+describe('assignPerCarcassFlocks (design.md §19.6, point 251 — one flock PER carcass, not one global draw)', () => {
+  type C = { id: string; x: number }
+  const dist = (c: C) => Math.abs(c.x) // distance from the origin, cheap and deterministic
+
+  it('two carcasses draw two INDEPENDENT flocks — one per carcass', () => {
+    const a: C = { id: 'a', x: 3 }
+    const b: C = { id: 'b', x: 8 }
+    const slots = [
+      { target: null as C | null, available: true },
+      { target: null as C | null, available: true },
+      { target: null as C | null, available: true },
+    ]
+    const next = assignPerCarcassFlocks(slots, [a, b], dist)
+    // The two nearest-first carcasses each get their own free slot; no sharing.
+    expect(next[0]).toBe(a)
+    expect(next[1]).toBe(b)
+    expect(next[2]).toBeNull()
+    expect(new Set(next.filter((t) => t !== null)).size).toBe(2)
+  })
+
+  it('a flock keeps its OWN carcass and never hops to the other (the reported bug)', () => {
+    const a: C = { id: 'a', x: 3 }
+    const b: C = { id: 'b', x: 8 }
+    // Flock 0 owns a, flock 1 owns b, and both are mid-meal (not available).
+    const slots = [
+      { target: a as C | null, available: false },
+      { target: b as C | null, available: false },
+      { target: null as C | null, available: true },
+    ]
+    // Flock 0 finishes a (a leaves the eligible list) — b is still present.
+    const next = assignPerCarcassFlocks(slots, [b], dist)
+    expect(next[0]).toBeNull() // flock 0 is RELEASED — it does NOT hop onto b
+    expect(next[1]).toBe(b) // flock 1 keeps its own carcass
+    expect(next[2]).toBeNull() // no third carcass to draw a flock
+  })
+
+  it('a released flock only takes a new carcass once it is idle again (no mid-flight hop)', () => {
+    const b: C = { id: 'b', x: 8 }
+    const c: C = { id: 'c', x: 4 }
+    // Flock 0 just lost its carcass and is still flying off (not available); a
+    // brand-new carcass c appears. It must NOT be grabbed until flock 0 is idle.
+    const flyingOff = [
+      { target: null as C | null, available: false },
+      { target: b as C | null, available: false },
+      { target: null as C | null, available: false },
+    ]
+    expect(assignPerCarcassFlocks(flyingOff, [b, c], dist)[0]).toBeNull()
+    // Once flock 0 has despawned (available), it takes the unowned carcass c.
+    const idleAgain = [
+      { target: null as C | null, available: true },
+      { target: b as C | null, available: false },
+      { target: null as C | null, available: false },
+    ]
+    expect(assignPerCarcassFlocks(idleAgain, [b, c], dist)[0]).toBe(c)
+  })
+
+  it('two flocks never share one carcass; a lone carcass draws exactly one flock', () => {
+    const a: C = { id: 'a', x: 5 }
+    const slots = [
+      { target: null as C | null, available: true },
+      { target: null as C | null, available: true },
+    ]
+    const next = assignPerCarcassFlocks(slots, [a], dist)
+    expect(next.filter((t) => t === a).length).toBe(1)
+  })
+
+  it('point-162 orthogonality: with no carcass in the list, no flock is ever drawn', () => {
+    // A drive-off leaves no carcass/remnant, so the caller passes an empty list.
+    const slots = [
+      { target: null as C | null, available: true },
+      { target: null as C | null, available: true },
+    ]
+    expect(assignPerCarcassFlocks(slots, [], dist)).toEqual([null, null])
+  })
+})
+
+describe('vigilBlocksLanding (design.md §19.8, point 121 — the keeper drives the vultures off)', () => {
+  it('blocks a landing while the live keeper stands inside the radius', () => {
+    expect(vigilBlocksLanding(0)).toBe(true) // standing right on the carcass
+    expect(vigilBlocksLanding(3.999)).toBe(true) // just inside the default radius
+  })
+
+  it('is boundary-exact: exactly at the radius the landing is free', () => {
+    expect(vigilBlocksLanding(4)).toBe(false)
+    expect(vigilBlocksLanding(4.001)).toBe(false)
+    expect(vigilBlocksLanding(100)).toBe(false)
+  })
+
+  it('honors a custom radius', () => {
+    expect(vigilBlocksLanding(5, 6)).toBe(true)
+    expect(vigilBlocksLanding(6, 6)).toBe(false)
+    expect(vigilBlocksLanding(1, 0.5)).toBe(false)
+  })
+
+  it('a dead keeper never blocks: callers filter dead keepers and pass Infinity with none alive', () => {
+    // The contract (documented on the helper): only LIVE keepers' distances are
+    // passed in; with no live keeper the caller passes Infinity — never a block.
+    expect(vigilBlocksLanding(Infinity)).toBe(false)
+  })
+})
+
+describe('vigilDrawReady (point 121 (f) — the carcass draws a predator after the delay)', () => {
+  it('is not ready before the calibratable delay', () => {
+    expect(vigilDrawReady(0, 12)).toBe(false)
+    expect(vigilDrawReady(11.99, 12)).toBe(false)
+  })
+
+  it('becomes ready exactly at the delay and stays ready after it', () => {
+    expect(vigilDrawReady(12, 12)).toBe(true)
+    expect(vigilDrawReady(59, 12)).toBe(true)
+  })
+
+  it('a zero delay draws immediately (the debug menu may set it)', () => {
+    expect(vigilDrawReady(0, 0)).toBe(true)
+  })
+})
+
+describe('shouldMourn (design.md §19.8, point 126 — the herd vigil at the bones)', () => {
+  it('draws an unmourned herd whose centre stands inside the radius', () => {
+    expect(shouldMourn(0, 25, false)).toBe(true) // right on the bones
+    expect(shouldMourn(24.999, 25, false)).toBe(true) // just inside the draw radius
+  })
+
+  it('is boundary-exact: at and beyond the radius it never mourns', () => {
+    expect(shouldMourn(25, 25, false)).toBe(false)
+    expect(shouldMourn(25.001, 25, false)).toBe(false)
+    expect(shouldMourn(1000, 25, false)).toBe(false)
+  })
+
+  it('honors a custom (debug-edited) radius', () => {
+    expect(shouldMourn(5, 6, false)).toBe(true)
+    expect(shouldMourn(6, 6, false)).toBe(false)
+    expect(shouldMourn(1, 0.5, false)).toBe(false)
+  })
+
+  it('an already-mourned herd is never drawn again until the latch resets', () => {
+    expect(shouldMourn(0, 25, true)).toBe(false) // even right on the bones
+    expect(shouldMourn(24, 25, true)).toBe(false)
+    // The caller clears the latch once the herd has LEFT the radius — a later
+    // visit mourns again.
+    expect(shouldMourn(24, 25, false)).toBe(true)
+  })
+})
+
+describe('elephantStepAllowed (point 126 — mourners cross any land, roamers keep their biomes)', () => {
+  const ALL = ['ocean', 'coast', 'desert', 'savanna', 'jungle', 'mountain', 'water']
+
+  it('a roaming elephant steps only onto savanna and jungle', () => {
+    for (const t of ALL) {
+      expect(elephantStepAllowed(t, false)).toBe(t === 'savanna' || t === 'jungle')
+    }
+  })
+
+  it('a mourning elephant crosses every LAND type — the graveyard sits in dry country', () => {
+    for (const t of ['coast', 'desert', 'savanna', 'jungle', 'mountain']) {
+      expect(elephantStepAllowed(t, true)).toBe(true)
+    }
+  })
+
+  it('water and ocean stay refused even for a mourner (the water dramas own that ground)', () => {
+    expect(elephantStepAllowed('water', true)).toBe(false)
+    expect(elephantStepAllowed('ocean', true)).toBe(false)
+  })
+
+  it('standing on foreign land unlocks any land step — a herd is never pinned where its vigil ended', () => {
+    // Post-vigil on the graveyard's dry ground: no longer mourning, yet free to walk out.
+    expect(elephantStepAllowed('desert', false, 'desert')).toBe(true)
+    expect(elephantStepAllowed('savanna', false, 'desert')).toBe(true)
+    expect(elephantStepAllowed('mountain', false, 'coast')).toBe(true)
+  })
+
+  it('the escape rule never lets a roamer ENTER foreign ground or any water', () => {
+    expect(elephantStepAllowed('desert', false, 'savanna')).toBe(false) // biome rule intact
+    expect(elephantStepAllowed('water', false, 'desert')).toBe(false) // even escaping, never into water
+    expect(elephantStepAllowed('ocean', false, 'coast')).toBe(false)
+  })
+})
+
+describe('mournDeadline (point 126 — the vigil hard deadline with the arc walk-in grant)', () => {
+  it('grants the hold window plus TWICE the straight-line walk time', () => {
+    // Herd drawn 20 m out at speed 1.5: 30 s hold + 2 * 20/1.5 s walk-in.
+    expect(mournDeadline(100, 20, 30, 1.5)).toBeCloseTo(100 + 30 + (20 / 1.5) * 2, 6)
+  })
+
+  it('a herd already at the bones gets exactly the hold window', () => {
+    expect(mournDeadline(50, 0, 30, 1.5)).toBe(80)
+  })
+
+  it('the radius-edge draw still holds after the arc approach (the point of the doubling)', () => {
+    // At the default radius 25 the single-time grant (old formula) left an
+    // arc-y approach eating into or past the hold; the doubled grant covers a
+    // detour factor of 2 so the hold window survives in full.
+    const single = 25 / 1.5
+    const deadline = mournDeadline(0, 25, 30, 1.5)
+    expect(deadline).toBeGreaterThan(single * 2) // walk grant alone exceeds any 2x-detour arc
+    expect(deadline - single * 2).toBe(30) // and the full hold window remains on top
+  })
+
+  it('is a hard deadline: finite for every draw distance (no herd ever pinned)', () => {
+    expect(Number.isFinite(mournDeadline(0, 1000, 30, 1.5))).toBe(true)
+  })
+})
+
+describe('offscreenRingSpawn (point 195 — the scripted predator never pops into frame)', () => {
+  // A frustum stub: on-screen = a disc of radius R around the origin (the
+  // camera centre for the test). The spawn must land OUTSIDE it.
+  const onScreenDisc = (R: number) => (x: number, z: number) => Math.hypot(x, z) <= R
+  const offScreen = (R: number) => (x: number, z: number) => !onScreenDisc(R)(x, z)
+
+  it.each([
+    { name: 'spot at the camera centre', cx: 0, cz: 0 },
+    { name: 'spot 20 m out', cx: 20, cz: 0 },
+    { name: 'spot at the seek edge', cx: 27, cz: -36 },
+  ])('returns an off-screen point within [minR, maxR] of the spot ($name)', ({ cx, cz }) => {
+    for (const rand of [0, 0.17, 0.5, 0.83, 0.999]) {
+      const p = offscreenRingSpawn(cx, cz, 15, 110, rand, offScreen(50))
+      expect(onScreenDisc(50)(p.x, p.z)).toBe(false) // never pops into sight
+      const fromSpot = Math.hypot(p.x - cx, p.z - cz)
+      expect(fromSpot).toBeGreaterThanOrEqual(15 - 1e-6) // never inside minR
+      expect(fromSpot).toBeLessThanOrEqual(110 + 1e-6) // never past the abort ring
+    }
+  })
+
+  it('is nearest-first: an already-clear minR ring returns exactly minR', () => {
+    // Spot far from the camera: the whole minR ring is already off-screen, so
+    // the run-in is as short as allowed (the first ring wins).
+    const p = offscreenRingSpawn(200, 0, 15, 110, 0, offScreen(50))
+    expect(Math.hypot(p.x - 200, p.z)).toBeCloseTo(15, 6)
+  })
+
+  it('pushes outward when the near rings are on-screen', () => {
+    // Spot at the camera centre under a wide on-screen disc (radius 60): minR=15
+    // is inside it, so the spawn must sit on a ring beyond 60.
+    const p = offscreenRingSpawn(0, 0, 15, 200, 0.3, offScreen(60))
+    expect(Math.hypot(p.x, p.z)).toBeGreaterThan(60)
+    expect(Math.hypot(p.x, p.z)).toBeLessThanOrEqual(200 + 1e-6)
+  })
+
+  it('with no predicate (no camera mounted) falls back to the minR ring, finite and deterministic', () => {
+    const p1 = offscreenRingSpawn(10, -5, 58, 90, 0.42)
+    const p2 = offscreenRingSpawn(10, -5, 58, 90, 0.42)
+    expect(Number.isFinite(p1.x)).toBe(true)
+    expect(Number.isFinite(p1.z)).toBe(true)
+    expect(Math.hypot(p1.x - 10, p1.z - (-5))).toBeCloseTo(58, 6)
+    expect(p1).toEqual(p2)
+  })
+
+  it('every probe on-screen (a very wide zoom) falls back to the far ring — finite, never NaN', () => {
+    // The on-screen disc (radius 500) swallows the whole [minR, maxR] band, so
+    // no probe is ever off-screen; the fallback sits at maxR, still finite.
+    const p = offscreenRingSpawn(0, 0, 15, 110, 0.42, offScreen(500))
+    expect(Number.isFinite(p.x)).toBe(true)
+    expect(Number.isFinite(p.z)).toBe(true)
+    expect(Math.hypot(p.x, p.z)).toBeCloseTo(110, 6)
+  })
+})
+
+describe('deflectedStep (scripted walks obey the land constraint, point 83)', () => {
+  it('walks straight while the way is clear', () => {
+    const r = deflectedStep(0, 0, 0, 1, () => false)
+    expect(r.moved).toBe(true)
+    expect(r.x).toBeCloseTo(0)
+    expect(r.z).toBeCloseTo(1)
+    expect(r.heading).toBeCloseTo(0)
+  })
+
+  it('deflects along a coast instead of entering the ocean', () => {
+    // Ocean everywhere north of z = 0.5; heading north (0).
+    const blocked = (_x: number, z: number) => z > 0.5
+    const r = deflectedStep(0, 0, 0, 1, blocked)
+    expect(r.moved).toBe(true)
+    expect(blocked(r.x, r.z)).toBe(false)
+    expect(Math.abs(r.heading)).toBeLessThanOrEqual(Math.PI / 2 + 1e-9) // swings at most to the flank
+  })
+
+  it('prefers the smallest swing that clears the water', () => {
+    // A diagonal coast: the first 15° probe to one side already clears it.
+    const blocked = (x: number, z: number) => z > 0.5 && x > -0.2
+    const r = deflectedStep(0, 0, 0, 1, blocked)
+    expect(r.moved).toBe(true)
+    expect(r.heading).toBeLessThan(0) // swung west, away from the blocked side
+  })
+
+  it('stands rather than swims when every forward probe is water', () => {
+    const r = deflectedStep(0, 0, 0, 1, () => true)
+    expect(r.moved).toBe(false)
+    expect(r.x).toBe(0)
+    expect(r.z).toBe(0)
+  })
+
+  it('never steps into a narrow channel even when land lies beyond it', () => {
+    // Water only in z ∈ (1.0, 1.1) — a thin channel; the far probe (0.6)
+    // lands on dry ground beyond it, but the step itself must not get wet.
+    const blocked = (_x: number, z: number) => z > 1.0 && z < 1.1
+    const r = deflectedStep(0, 0.98, 0, 0.05, blocked, 0.6)
+    expect(r.moved).toBe(true)
+    expect(blocked(r.x, r.z)).toBe(false)
+  })
+
+  it('the lookahead keeps the walker out of a one-cell dead end', () => {
+    // A single land cell at z ∈ [1, 1.2] pokes into water (z > 1.2 wet,
+    // z in (1, 1.2] dry pocket). With a probe reaching past the pocket the
+    // walker treats the pocket as blocked and swings aside instead.
+    const blocked = (x: number, z: number) => z > 1.2 || (z > 1 && Math.abs(x) < 0.05)
+    const r = deflectedStep(0, 0.95, 0, 0.1, blocked, 0.6)
+    expect(r.moved).toBe(true)
+    // It did NOT step straight into the pocket column.
+    expect(Math.abs(r.heading)).toBeGreaterThan(0.01)
+  })
+})
+
+describe('escapeCorridorHeading (point 188 — the walk-off picks a land corridor, not the seaward radial)', () => {
+  const wrap = (d: number) => Math.atan2(Math.sin(d), Math.cos(d))
+
+  it('open country leaves along the radial (the outward bias decides ties)', () => {
+    const h = escapeCorridorHeading(0, 0, 0.7, () => false)
+    expect(Math.abs(wrap(h - 0.7))).toBeLessThan(1e-9)
+  })
+
+  it('a seaward radial loses to a long land corridor (the Cairo coast pocket)', () => {
+    // Ocean fills x > 4 (a short seaward stub); the radial points +x (east,
+    // heading pi/2 in the sin/cos convention). Land runs forever elsewhere.
+    const blocked = (x: number) => x > 4
+    const h = escapeCorridorHeading(0, 0, Math.PI / 2, blocked)
+    // The pick is NOT the seaward radial: its corridor is a 2-4 unit stub.
+    expect(Math.abs(wrap(h - Math.PI / 2))).toBeGreaterThan(Math.PI / 5)
+    // And the picked corridor is actually clear for the full probe reach.
+    for (let sIdx = 1; sIdx <= 12; sIdx++) {
+      expect(blocked(Math.sin(h) * 2 * sIdx)).toBe(false)
+    }
+  })
+
+  it('of two clear corridors the more outward one wins', () => {
+    // Ocean blocks the radial (+z) beyond 2; both +x and -x are clear, but the
+    // radial tilts slightly toward +x — the outward weight breaks the tie.
+    const blocked = (x: number, z: number) => z > 2 && Math.abs(x) < 6
+    const radial = 0.15 // ~+z, tilted a whisker toward +x
+    const h = escapeCorridorHeading(0, 0, radial, blocked)
+    expect(Math.sin(h)).toBeGreaterThan(0) // picked the +x side, matching the tilt
+  })
+})
+
+describe('calfFleeStep (design.md §19.8, point 157 — a run-down calf steers around the water)', () => {
+  it('runs directly away from the hunter while the way is clear', () => {
+    // Hunter at the origin, calf due east: it should keep fleeing straight east.
+    const r = calfFleeStep(3, 0, 0, 0, 1, () => false)
+    expect(r.moved).toBe(true)
+    expect(r.heading).toBeCloseTo(Math.PI / 2) // atan2(cx-hx, cz-hz) = east
+    expect(r.x).toBeCloseTo(4)
+    expect(r.z).toBeCloseTo(0)
+  })
+
+  it('flees on the diagonal away from a corner hunter', () => {
+    const r = calfFleeStep(2, 2, 0, 0, 1, () => false)
+    expect(r.moved).toBe(true)
+    expect(r.heading).toBeCloseTo(Math.PI / 4) // away from the SW hunter
+  })
+
+  it('deflects around water on the escape line instead of pinning', () => {
+    // Water east of x = 3.5; the straight-away flight (east) runs into it.
+    const blocked = (x: number, _z: number) => x > 3.5
+    const r = calfFleeStep(3, 0, 0, 0, 1, blocked)
+    expect(r.moved).toBe(true)
+    expect(blocked(r.x, r.z)).toBe(false) // it landed on dry ground
+    expect(Math.abs(r.heading - Math.PI / 2)).toBeGreaterThan(0.01) // it turned off straight-east
+  })
+
+  it('stands (moved:false) when cornered against water, leaving the catch to resolve it', () => {
+    const r = calfFleeStep(3, 0, 0, 0, 1, () => true)
+    expect(r.moved).toBe(false)
+    expect(r.x).toBe(3)
+    expect(r.z).toBe(0)
+    expect(r.corridor).toBeUndefined() // a genuine dead-end holds no corridor
+  })
+})
+
+describe('calfFleeStep at a concave coast pocket (point 226 — the calf never freezes at the waterline)', () => {
+  // The user's Cairo geometry: the calf stands at the tip of a narrow land
+  // tongue poking north into the sea — water fills the bight ahead AND wraps
+  // around both flanks, so EVERY probe within the ±90° deflection fan of the
+  // straight-away flight (north, hunter to the south) is wet. Land: the
+  // tongue itself (|x| <= 0.6, z <= 0.01) and the open country south of
+  // z = -0.9.
+  const pocket = (x: number, z: number) => z > 0.01 || (z > -0.9 && Math.abs(x) > 0.6)
+
+  it('the direct deflection fan alone dead-ends here (the reproduced bug)', () => {
+    // This is what pinned the calf: deflectedStep on the away heading finds
+    // no dry probe within its ±90° fan and stands.
+    const r = deflectedStep(0, 0, 0, 0.5, pocket, 0.8)
+    expect(r.moved).toBe(false)
+  })
+
+  it('gets a deflected step onto LAND — never a water cell — via the escape corridor', () => {
+    const r = calfFleeStep(0, 0, 0, -5, 0.5, pocket, 0.8)
+    expect(r.moved).toBe(true) // visibly moving, not frozen at the water
+    expect(pocket(r.x, r.z)).toBe(false) // the step landed on dry ground
+    expect(r.corridor).toBeDefined() // the point-188 corridor is engaged (and sticky)
+  })
+
+  it('keeps a non-zero land-ward step every frame until the catch', () => {
+    // Chase loop: the hunter closes from the south faster than the calf flees
+    // (the slower-than-hunter property), so the catch is guaranteed — and up
+    // to that catch the calf must MOVE on land every single frame.
+    let cx = 0
+    let cz = 0
+    let hx = 0
+    let hz = -5
+    let corridor: number | undefined
+    let corridorUsed = false
+    let caught = false
+    for (let i = 0; i < 60; i++) {
+      const r = calfFleeStep(cx, cz, hx, hz, 0.5, pocket, 0.8, corridor)
+      expect(r.moved).toBe(true) // never frozen at the waterline
+      expect(pocket(r.x, r.z)).toBe(false) // never rests on a water cell
+      expect(Math.hypot(r.x - cx, r.z - cz)).toBeGreaterThan(0.4) // a real step
+      cx = r.x
+      cz = r.z
+      corridor = r.corridor
+      if (corridor !== undefined) corridorUsed = true
+      const d = Math.hypot(cx - hx, cz - hz)
+      if (d < 0.6) {
+        caught = true // the hunter has run the calf down — the drama resolves
+        break
+      }
+      hx += ((cx - hx) / d) * 0.7
+      hz += ((cz - hz) / d) * 0.7
+    }
+    expect(caught).toBe(true) // the chase still ends in the catch
+    expect(corridorUsed).toBe(true) // the pocket actually exercised the fallback
+  })
+
+  it('reuses the sticky corridor while its way ahead stays clear (no flip-flop)', () => {
+    // At the tongue tip the direct fan is dead — a held corridor due south
+    // (down the tongue, clear) is carried unchanged, never re-picked to the
+    // opposite flank mid-run.
+    const r = calfFleeStep(0, 0, 0, -5, 0.5, pocket, 0.8, Math.PI)
+    expect(r.moved).toBe(true)
+    expect(r.corridor).toBe(Math.PI)
+    expect(r.heading).toBeCloseTo(Math.PI)
+    expect(r.z).toBeCloseTo(-0.5)
+  })
+
+  it('re-picks the corridor only once its way ahead closes', () => {
+    // A held corridor pointing straight INTO the bay (north) probes wet — it
+    // is dropped and a fresh clear-land corridor picked instead.
+    const r = calfFleeStep(0, 0, 0, -5, 0.5, pocket, 0.8, 0)
+    expect(r.moved).toBe(true)
+    expect(pocket(r.x, r.z)).toBe(false)
+    expect(r.corridor).toBeDefined()
+    expect(r.corridor).not.toBe(0)
+  })
+})
+
+describe('waterStruggleFate (design.md §19.8, point 122 — calm water rescues, a swollen current drowns)', () => {
+  const SELF_RESCUE = 25
+  const DROWN = 30
+  const THRESHOLD = 0.8
+
+  const fate = (flow: number, seconds: number) =>
+    waterStruggleFate(flow, seconds, SELF_RESCUE, DROWN, THRESHOLD)
+
+  it('calm water self-rescues after the exhaustion window and never drowns', () => {
+    expect(fate(0, 10)).toBe('struggling')
+    expect(fate(0, 25.1)).toBe('self-rescue')
+    expect(fate(0.5, 26)).toBe('self-rescue')
+    // Even absurdly long in calm water: exhaustion wins, the river never does.
+    expect(fate(0.79, 10_000)).toBe('self-rescue')
+  })
+
+  it('a strong current drowns exactly at the threshold second — and never self-rescues', () => {
+    expect(fate(1, 29.99)).toBe('struggling')
+    expect(fate(1, 30)).toBe('drowned')
+    // The self-rescue must NOT fire in a strong current, or nothing ever
+    // drowns: past the 25 s window it keeps struggling until the river takes it.
+    expect(fate(1, 26)).toBe('struggling')
+  })
+
+  it('the flow boundary is exact: just below clambers out, at it drowns', () => {
+    expect(fate(THRESHOLD - 1e-9, 40)).toBe('self-rescue')
+    expect(fate(THRESHOLD, 40)).toBe('drowned')
+  })
+
+  it('an Infinity self-rescue window (the wading parent) still drowns in a strong current', () => {
+    expect(waterStruggleFate(1, 30, Infinity, DROWN, THRESHOLD)).toBe('drowned')
+    expect(waterStruggleFate(0.5, 10_000, Infinity, DROWN, THRESHOLD)).toBe('struggling')
+  })
+})
+
+describe('seasonFlowFactor (point 122 — the rains swell the drama current)', () => {
+  it('interpolates dry -> wet over the wetness and clamps outside 0..1', () => {
+    expect(seasonFlowFactor(0, 0.6, 1.8)).toBeCloseTo(0.6, 9)
+    expect(seasonFlowFactor(1, 0.6, 1.8)).toBeCloseTo(1.8, 9)
+    expect(seasonFlowFactor(0.5, 0.6, 1.8)).toBeCloseTo(1.2, 9)
+    expect(seasonFlowFactor(-1, 0.6, 1.8)).toBeCloseTo(0.6, 9)
+    expect(seasonFlowFactor(2, 0.6, 1.8)).toBeCloseTo(1.8, 9)
+  })
+
+  it('with the shipped balance values, a mid-channel flow drowns only in the rains', () => {
+    // flow 1.0 (centerline): dry 0.6 < 0.8 (clambers out), rains 1.8 >= 0.8.
+    expect(1.0 * seasonFlowFactor(0.05, 0.6, 1.8)).toBeLessThan(0.8)
+    expect(1.0 * seasonFlowFactor(0.9, 0.6, 1.8)).toBeGreaterThanOrEqual(0.8)
+  })
+})
+
+describe('channelDriftStep (point 122 — the current follows the channel, never beaches)', () => {
+  it('takes the full step while it stays on water', () => {
+    const all = () => true
+    expect(channelDriftStep(0, 0, 1, 2, all)).toEqual({ x: 1, z: 2 })
+  })
+
+  it('falls back to the in-channel component when the full step would beach', () => {
+    // Water is the half-plane x <= 0.5: the x-component beaches, z flows.
+    const water = (x: number) => x <= 0.5
+    expect(channelDriftStep(0, 0, 1, 2, water)).toEqual({ x: 0, z: 2 })
+    // Water is z <= 0.5: the z-component beaches, x flows.
+    const waterZ = (_x: number, z: number) => z <= 0.5
+    expect(channelDriftStep(0, 0, 1, 2, waterZ)).toEqual({ x: 1, z: 0 })
+  })
+
+  it('stays put when every candidate is dry (still in the water at its old spot)', () => {
+    const none = () => false
+    expect(channelDriftStep(3, 4, 1, 1, none)).toEqual({ x: 3, z: 4 })
+  })
+})
+
+// The swollen current must survive the DRIFT it drives (design.md §19.8,
+// point 122). The sea-mouth slack (point 316) scales the river flow down over
+// the last 0.6° of a sea-bound course so the TRAVELLER is never funnelled into
+// a coast-locked pocket (§11.2) — and the water drama inherited it. In the
+// rains a struggling calf drifts ~0.108°/s, so on the lower Nile it reaches
+// that slack ~24 s in, five seconds before the 30 s drown window closes: the
+// current went slack under it, the self-rescue fired on the spot (its total
+// water time was already past the 25 s exhaustion window) and the calf walked
+// ashore alive in what §19.8 calls a swollen river. Wildlife.tsx therefore
+// reads dramaCurrent (unslacked), and this replays the shipped drift+fate loop
+// on the real river to prove both season endings.
+describe('the rains drown a calf on a sea-bound river (design.md §19.8, point 122)', () => {
+  beforeAll(async () => {
+    await setupGeodata()
+  })
+
+  const SEED = 1234
+  const UNITS_PER_DEGREE = 10
+  // Mirrors of the two Wildlife.tsx constants the drift loop runs on.
+  const CALF_DRIFT_DEG = 0.06
+  const STRUGGLE_SELF_RESCUE = 25
+  // The staged spot the browser check uses: strong mid-channel flow on the
+  // lower Nile, ~2.4° of course above the mouth, no waterfall in drift reach.
+  const STAGED_LAT = 29
+  const STAGED_LON = 31
+
+  const isWater = (x: number, z: number) => sampleTerrain(-z / 10, x / 10, SEED).type === 'water'
+
+  /** One struggling calf, followed to its fate — the Wildlife.tsx drift loop. */
+  function driftFate(wetness: number): { fate: string; seconds: number } {
+    const bw = balance.waterDrama
+    const season = seasonFlowFactor(wetness, bw.dryFlowFactor, bw.wetFlowFactor)
+    let x = STAGED_LON * UNITS_PER_DEGREE
+    let z = -STAGED_LAT * UNITS_PER_DEGREE
+    let t = 0
+    const dt = 1 / 30
+    for (let i = 0; i < 30 * 60; i++) {
+      t += dt
+      const flow = dramaCurrent(-z / 10, x / 10)
+      if (flow.strength > 0) {
+        const stepDeg = flow.strength * season * CALF_DRIFT_DEG * dt
+        const moved = channelDriftStep(
+          x, z,
+          flow.dirLon * stepDeg * UNITS_PER_DEGREE,
+          -flow.dirLat * stepDeg * UNITS_PER_DEGREE,
+          isWater,
+        )
+        x = moved.x
+        z = moved.z
+      }
+      const fate = waterStruggleFate(
+        flow.strength * season, t, STRUGGLE_SELF_RESCUE, bw.drownSeconds, bw.drownFlowThreshold,
+      )
+      if (fate !== 'struggling') return { fate, seconds: t }
+    }
+    return { fate: 'struggling', seconds: t }
+  }
+
+  it('the staged spot is a strong mid-channel flow (the scenario still stands)', () => {
+    expect(sampleTerrain(STAGED_LAT, STAGED_LON, SEED).type).toBe('water')
+    expect(dramaCurrent(STAGED_LAT, STAGED_LON).strength).toBeGreaterThanOrEqual(0.9)
+  })
+
+  it('in the forced rains the calf drowns inside the drown window', () => {
+    const wet = driftFate(1)
+    expect(wet.fate).toBe('drowned')
+    expect(wet.seconds).toBeCloseTo(balance.waterDrama.drownSeconds, 1)
+  })
+
+  it('the dry season still clambers the same calf out alive', () => {
+    const dry = driftFate(0)
+    expect(dry.fate).toBe('self-rescue')
+    expect(dry.seconds).toBeCloseTo(STRUGGLE_SELF_RESCUE, 0)
+  })
+
+  it('the mouth slack stays intact for the traveller, and only for him', () => {
+    // Where the drift ends (the Nile's last reach, inside the slack band) the
+    // traveller's current is tamed while the drama current still runs full.
+    const lat = 31.4
+    const lon = 30.49
+    const season = seasonFlowFactor(1, balance.waterDrama.dryFlowFactor, balance.waterDrama.wetFlowFactor)
+    expect(riverFlow(lat, lon).strength).toBeLessThan(dramaCurrent(lat, lon).strength)
+    expect(riverFlow(lat, lon).strength * season).toBeLessThan(balance.waterDrama.drownFlowThreshold)
+    expect(dramaCurrent(lat, lon).strength * season).toBeGreaterThanOrEqual(balance.waterDrama.drownFlowThreshold)
+  })
+})
+
+describe('mireRoll / mireFate (design.md §19.8, point 123 — the drying waterhole)', () => {
+  it('mires only AT a dry-season bank, and only on the roll', () => {
+    // At the bank, dry, roll under the chance: mired.
+    expect(mireRoll(0.02, 0.05, 0.1, 0.25, 0.35, 0.2)).toBe(true)
+    // Away from the bank: never.
+    expect(mireRoll(0.2, 0.05, 0.1, 0.25, 0.35, 0.0)).toBe(false)
+    // In the rains the bank is firm: never.
+    expect(mireRoll(0.02, 0.05, 0.8, 0.25, 0.35, 0.0)).toBe(false)
+    // Roll over the chance: not this time.
+    expect(mireRoll(0.02, 0.05, 0.1, 0.25, 0.35, 0.9)).toBe(false)
+    // The wetness boundary is exact: AT the threshold the bank is firm.
+    expect(mireRoll(0.02, 0.05, 0.25, 0.25, 0.35, 0.0)).toBe(false)
+  })
+
+  it('the bank-reach boundary is inclusive: bankDistDeg === bankReachDeg still counts as AT the bank', () => {
+    // The guard is `bankDistDeg > bankReachDeg` (strict), so equality is NOT
+    // excluded — a bout landing exactly on the reach edge still may mire.
+    expect(mireRoll(0.05, 0.05, 0.1, 0.25, 0.35, 0.2)).toBe(true)
+    // A hair beyond the reach IS excluded.
+    expect(mireRoll(0.05 + 1e-9, 0.05, 0.1, 0.25, 0.35, 0.2)).toBe(false)
+  })
+
+  it('the mire always resolves: released exactly at the window', () => {
+    expect(mireFate(0, 45)).toBe('mired')
+    expect(mireFate(44.99, 45)).toBe('mired')
+    expect(mireFate(45, 45)).toBe('released')
+  })
+})
+
+describe('vicinitySeedBounds (point 135a — the guarantee holds from the leave point, over time)', () => {
+  it('counts and places against the margin-shrunk ring', () => {
+    const b = vicinitySeedBounds(75, 14, 6, 10)
+    expect(b.countRadius).toBe(65)
+    expect(b.distMin).toBe(20)
+    // Placement + group spread (6) stays inside the count radius.
+    expect(b.distMax + 6).toBeLessThanOrEqual(b.countRadius)
+    // And the count radius + a few units of observer offset stays inside
+    // the promised radius.
+    expect(b.countRadius + 8).toBeLessThanOrEqual(75 + 0.0001)
+  })
+
+  it('degenerates safely when the margin eats the ring', () => {
+    const b = vicinitySeedBounds(22, 14, 6, 10)
+    expect(b.countRadius).toBeGreaterThanOrEqual(20)
+    expect(b.distMax).toBeGreaterThanOrEqual(b.distMin)
+  })
+})
+
+describe('pickOffscreenLandAnchor (points 165/183 — a seeded guarantee never pops into view; defers when it cannot place off-screen)', () => {
+  const anyLand = () => true
+  it('prefers an off-screen land candidate over on-screen ones', () => {
+    const cands = [[0, 0], [10, 0], [20, 0]] as const
+    // The first two project inside the frame; the third is off-screen.
+    const onScreen = (x: number) => x < 15
+    expect(pickOffscreenLandAnchor(cands, anyLand, (x) => onScreen(x))).toEqual([20, 0])
+  })
+
+  it('returns null when only on-screen land exists, so the seeder defers instead of popping (point 183)', () => {
+    const cands = [[0, 0], [10, 0]] as const
+    expect(pickOffscreenLandAnchor(cands, anyLand, () => true)).toBeNull()
+  })
+
+  it('skips water candidates and takes the off-screen LAND one', () => {
+    const cands = [[0, 0], [10, 0], [20, 0]] as const
+    const isLand = (x: number) => x !== 10 // 10 is water
+    const onScreen = (x: number) => x < 15 // 0 on-screen, 20 off-screen
+    expect(pickOffscreenLandAnchor(cands, (x) => isLand(x), (x) => onScreen(x))).toEqual([20, 0])
+  })
+
+  it('returns null when no candidate is land', () => {
+    const cands = [[0, 0], [10, 0]] as const
+    expect(pickOffscreenLandAnchor(cands, () => false, () => false)).toBeNull()
+  })
+})
+
+describe('vicinityAttemptSeed (point 102 — a deferring vicinity top-up EXPLORES instead of re-testing frozen bearings)', () => {
+  // The seeder draws its 14 candidate bearings/distances (plus the species
+  // rotation start) from mulberry32(seed); a fresh seed per attempt means a
+  // fresh candidate set, so a static camera can never pin a deferring draw.
+  const draw = (s: number) => {
+    const r = mulberry32(s)
+    return Array.from({ length: 29 }, () => r())
+  }
+
+  it('consecutive attempts yield different seeds AND different whole candidate draws', () => {
+    const s0 = vicinityAttemptSeed(1234, 5678, 0)
+    const s1 = vicinityAttemptSeed(1234, 5678, 1)
+    const s2 = vicinityAttemptSeed(1234, 5678, 2)
+    expect(new Set([s0, s1, s2]).size).toBe(3)
+    expect(draw(s1)).not.toEqual(draw(s0))
+    expect(draw(s2)).not.toEqual(draw(s1))
+  })
+
+  it('is reproducible: the same (seed, place, attempt) always draws the same set', () => {
+    expect(vicinityAttemptSeed(99, 7, 3)).toBe(vicinityAttemptSeed(99, 7, 3))
+    expect(draw(vicinityAttemptSeed(99, 7, 3))).toEqual(draw(vicinityAttemptSeed(99, 7, 3)))
+  })
+
+  it('attempt 0 keeps the historical fixed seed, so first placements are unchanged', () => {
+    expect(vicinityAttemptSeed(4, 11, 0)).toBe(((4 ^ 11) + 0x102) >>> 0)
+  })
+
+  it('stays a valid unsigned 32-bit seed across large attempt counts', () => {
+    for (const attempt of [1, 1000, 123456]) {
+      const s = vicinityAttemptSeed(0xdeadbeef, -12345, attempt)
+      expect(s).toBeGreaterThanOrEqual(0)
+      expect(s).toBeLessThanOrEqual(0xffffffff)
+      expect(Number.isInteger(s)).toBe(true)
+    }
+  })
+})
+
+describe('calvesForGroup (point 169 — a calibratable fraction of the herd, distinct parents)', () => {
+  it('raises none below the family-life threshold of three', () => {
+    expect(calvesForGroup(0, 0.25)).toBe(0)
+    expect(calvesForGroup(2, 0.9)).toBe(0)
+  })
+
+  it('scales with the fraction and the group size', () => {
+    expect(calvesForGroup(8, 0.25)).toBe(2) // round(2) = 2
+    expect(calvesForGroup(12, 0.25)).toBe(3) // round(3) = 3
+    expect(calvesForGroup(20, 0.25)).toBe(5)
+  })
+
+  it('never exceeds floor(n/2), so every calf keeps its own distinct parent', () => {
+    // floor(n/2) parents are available; the count may never outrun them.
+    for (const n of [3, 4, 5, 6, 7, 8, 20, 40]) {
+      expect(calvesForGroup(n, 1)).toBe(Math.floor(n / 2)) // fraction 1 → capped at floor(n/2)
+    }
+  })
+
+  it('always raises at least one juvenile for a group of three or more', () => {
+    expect(calvesForGroup(3, 0)).toBe(1) // fraction 0 still floors at 1 (herds raise young)
+    expect(calvesForGroup(10, 0.01)).toBe(1)
+  })
+})
+
+describe('drinkCatchment (point 135c — the drinking belt survives the widened rivers)', () => {
+  it('nearly closes in the rains, opens wide in the dry — width-independent belt', () => {
+    // The belt (catchment minus half-width) is width-independent.
+    expect(drinkCatchment(0.17, 0) - 0.17).toBeCloseTo(0.06, 9)
+    expect(drinkCatchment(0.272, 0) - 0.272).toBeCloseTo(0.06, 9)
+    // The dry season opens it to 0.43 past the waterline — a strict
+    // superset of the wet belt, so dry drinkers >= wet drinkers by geometry.
+    expect(drinkCatchment(0.272, 1) - 0.272).toBeCloseTo(0.43, 9)
+    expect(drinkCatchment(0.272, 1)).toBeGreaterThan(drinkCatchment(0.272, 0))
+    // Clamped dryness.
+    expect(drinkCatchment(0.272, 2)).toBeCloseTo(drinkCatchment(0.272, 1), 9)
+  })
+})
+
+describe('the food web (design.md §19.3 — the giraffe joins as LION-ONLY prey, point 124)', () => {
+  it('only the lion takes giraffe; cheetah, leopard and hyena never do', () => {
+    expect(PREDATOR_PREY.lion).toContain('giraffe')
+    expect(PREDATOR_PREY.cheetah).not.toContain('giraffe')
+    expect(PREDATOR_PREY.leopard).not.toContain('giraffe')
+    expect(PREDATOR_PREY.hyena).not.toContain('giraffe')
+  })
+
+  it('giraffe is huntable exactly in the regions its ambient savanna herds live: east and south', () => {
+    const withGiraffe = (Object.keys(REGION_PREY) as Array<keyof typeof REGION_PREY>).filter((r) =>
+      REGION_PREY[r].includes('giraffe'),
+    )
+    expect(withGiraffe.sort()).toEqual(['east', 'south'])
+  })
+
+  it('every region prey pool stays inside some resident predator food web (a victim hunt always finds a fit predator)', () => {
+    // The lion takes every prey kind, so no pool member is unhuntable.
+    for (const pool of Object.values(REGION_PREY)) {
+      for (const p of pool) expect(PREDATOR_PREY.lion).toContain(p)
+    }
+  })
+})
+
+describe('defendChance / parentDefends (design.md §19.8, points 124/125 — the defence matrix)', () => {
+  // The shipped balance weights (src/config/balance.ts) — asserted here so a
+  // recalibration that breaks the LEGIBLE RULE (ordered both ways) fails fast.
+  const weights = {
+    preyWeapon: { giraffe: 1.5, zebra: 1.0, wildebeest: 0.7, warthog: 0.7, antelope: 0.25 },
+    predatorFlight: { cheetah: 1.0, leopard: 0.85, hyena: 0.7, lion: 0.5 },
+    killFlight: { cheetah: 0.5, leopard: 0.25, hyena: 0.15, lion: 0 },
+  }
+  const CAP = 0.95
+  // Ascending defence chance: predators along the INVERSE of §14.1's danger
+  // order (src/systems/events.ts), prey along their weapon strength.
+  const PREDATORS_ASC = ['lion', 'hyena', 'leopard', 'cheetah'] as const
+  const PREY_ASC = ['antelope', 'wildebeest', 'warthog', 'zebra', 'giraffe'] as const
+  /** Strictly rising, except where both sides already sit at the 0.95 cap
+   *  (the giraffe/zebra top pairings) or the equality is explicitly allowed
+   *  (wildebeest == warthog: horns vs tusks, both mid-tier). */
+  const expectRise = (lo: number, hi: number, equalOk = false) => {
+    if (lo === CAP && hi === CAP) return
+    if (equalOk) expect(hi).toBeGreaterThanOrEqual(lo)
+    else expect(hi).toBeGreaterThan(lo)
+  }
+
+  it('for each prey the chance rises as the predator gets lighter (inverse §14.1 danger order)', () => {
+    for (const prey of PREY_ASC) {
+      for (let i = 1; i < PREDATORS_ASC.length; i++) {
+        expectRise(
+          defendChance(prey, PREDATORS_ASC[i - 1], weights),
+          defendChance(prey, PREDATORS_ASC[i], weights),
+        )
+      }
+    }
+  })
+
+  it('for each predator the chance rises with the prey defence (wildebeest == warthog allowed)', () => {
+    for (const predator of PREDATORS_ASC) {
+      for (let i = 1; i < PREY_ASC.length; i++) {
+        const equalOk = PREY_ASC[i - 1] === 'wildebeest' && PREY_ASC[i] === 'warthog'
+        expectRise(
+          defendChance(PREY_ASC[i - 1], predator, weights),
+          defendChance(PREY_ASC[i], predator, weights),
+          equalOk,
+        )
+      }
+    }
+  })
+
+  it('every pairing stays a probability within [0, 0.95]', () => {
+    for (const prey of PREY_ASC) {
+      for (const predator of PREDATORS_ASC) {
+        const c = defendChance(prey, predator, weights)
+        expect(c).toBeGreaterThanOrEqual(0)
+        expect(c).toBeLessThanOrEqual(CAP)
+      }
+    }
+  })
+
+  it('giraffe-vs-lion keeps the shipped point-124 value and reads clearly better than antelope-vs-lion', () => {
+    expect(defendChance('giraffe', 'lion', weights)).toBeCloseTo(0.75, 10)
+    expect(defendChance('antelope', 'lion', weights)).toBeCloseTo(0.125, 10)
+    // Legible as a rule: the giraffe's kick is several times the antelope's luck.
+    expect(defendChance('giraffe', 'lion', weights)).toBeGreaterThan(4 * defendChance('antelope', 'lion', weights))
+  })
+
+  it('the product caps at 0.95 — no defence is a certainty (giraffe-vs-cheetah)', () => {
+    expect(defendChance('giraffe', 'cheetah', weights)).toBe(0.95) // raw 1.5 × 1.0
+    expect(parentDefends('giraffe', 'cheetah', 0.9499, weights)).toBe(true)
+    expect(parentDefends('giraffe', 'cheetah', 0.95, weights)).toBe(false)
+  })
+
+  it('a species missing on either side has chance 0 and never defends', () => {
+    expect(defendChance('elephant', 'lion', weights)).toBe(0)
+    expect(defendChance('giraffe', 'crocodile', weights)).toBe(0)
+    expect(parentDefends('elephant', 'lion', 0, weights)).toBe(false)
+    expect(parentDefends('giraffe', 'crocodile', 0, weights)).toBe(false)
+  })
+
+  it('is boundary-exact at forced roll extremes: roll < chance defends, roll >= chance is taken', () => {
+    expect(parentDefends('giraffe', 'lion', 0, weights)).toBe(true)
+    expect(parentDefends('giraffe', 'lion', 0.7499, weights)).toBe(true)
+    expect(parentDefends('giraffe', 'lion', 0.75, weights)).toBe(false)
+    expect(parentDefends('giraffe', 'lion', 1, weights)).toBe(false)
+    expect(parentDefends('antelope', 'lion', 0.1249, weights)).toBe(true)
+    expect(parentDefends('antelope', 'lion', 0.125, weights)).toBe(false)
+  })
+})
+
+describe('killChance / parentAttackOutcome (design.md §19.8, point 146 — revenge)', () => {
+  // Swept against the SHIPPED balance, not a local mirror: a recalibration
+  // that lets revenge outgrow the drive-off — or touch the lion — fails here.
+  const shipped = balance.parentDefense
+  const PREYS = Object.keys(shipped.preyWeapon)
+  const PREDATORS = Object.keys(shipped.predatorFlight)
+
+  it('maps deterministically with boundary-exact rolls (one roll, nested bands)', () => {
+    // giraffe vs cheetah: killChance = (1.5 − 0.5) × 0.5 = 0.5,
+    // defendChance = 0.95 (capped raw 1.5 × 1.0).
+    expect(killChance('giraffe', 'cheetah', shipped)).toBeCloseTo(0.5, 10)
+    expect(parentAttackOutcome('giraffe', 'cheetah', 0, shipped)).toBe('kill')
+    expect(parentAttackOutcome('giraffe', 'cheetah', 0.4999, shipped)).toBe('kill')
+    expect(parentAttackOutcome('giraffe', 'cheetah', 0.5, shipped)).toBe('driveOff')
+    expect(parentAttackOutcome('giraffe', 'cheetah', 0.9499, shipped)).toBe('driveOff')
+    expect(parentAttackOutcome('giraffe', 'cheetah', 0.95, shipped)).toBe('taken')
+    expect(parentAttackOutcome('giraffe', 'cheetah', 1, shipped)).toBe('taken')
+    // giraffe vs lion: killChance 0 — a roll of 0 is a drive-off, never a kill.
+    expect(parentAttackOutcome('giraffe', 'lion', 0, shipped)).toBe('driveOff')
+    expect(parentAttackOutcome('giraffe', 'lion', 0.7499, shipped)).toBe('driveOff')
+    expect(parentAttackOutcome('giraffe', 'lion', 0.75, shipped)).toBe('taken')
+  })
+
+  it('forceOutcome (test-only) short-circuits the roll (point 177 determinism)', () => {
+    // The 146/145c verifications set this so a single attempt lands the outcome
+    // under test regardless of the resolution-position-hashed roll — replacing a
+    // retry-until-success loop. It never overrides in normal play (undefined).
+    for (const roll of [0, 0.5, 0.96, 1]) {
+      expect(parentAttackOutcome('antelope', 'hyena', roll, { ...shipped, forceOutcome: 'kill' })).toBe('kill')
+      expect(parentAttackOutcome('giraffe', 'lion', roll, { ...shipped, forceOutcome: 'driveOff' })).toBe('driveOff')
+    }
+    // Absent (shipped) it never forces: a roll of 1 is still 'taken'. The shipped
+    // balance's type has no forceOutcome (it is a test-only extension of the weights
+    // param), so read it through a cast to assert it never leaked into the config.
+    expect((shipped as { forceOutcome?: unknown }).forceOutcome).toBeUndefined()
+    expect(parentAttackOutcome('giraffe', 'cheetah', 1, shipped)).toBe('taken')
+  })
+
+  it('killing is harder than driving off: killChance <= defendChance for EVERY pair (swept)', () => {
+    for (const prey of PREYS) {
+      for (const predator of PREDATORS) {
+        expect(killChance(prey, predator, shipped)).toBeLessThanOrEqual(
+          defendChance(prey, predator, shipped),
+        )
+      }
+    }
+  })
+
+  it('nothing kills a lion — killChance 0 for every prey (swept)', () => {
+    for (const prey of PREYS) {
+      expect(killChance(prey, 'lion', shipped)).toBe(0)
+      expect(parentAttackOutcome(prey, 'lion', 0, shipped)).not.toBe('kill')
+    }
+  })
+
+  it('the antelope kills nothing — the (weapon − 0.5) gate, swept over every predator', () => {
+    for (const predator of PREDATORS) {
+      expect(killChance('antelope', predator, shipped)).toBe(0)
+      expect(parentAttackOutcome('antelope', predator, 0, shipped)).not.toBe('kill')
+    }
+  })
+
+  it('a giraffe and a zebra CAN kill a cheetah (chance > 0), and a missing species cannot', () => {
+    expect(killChance('giraffe', 'cheetah', shipped)).toBeGreaterThan(0)
+    expect(killChance('zebra', 'cheetah', shipped)).toBeGreaterThan(0)
+    expect(killChance('elephant', 'cheetah', shipped)).toBe(0)
+    expect(killChance('giraffe', 'crocodile', shipped)).toBe(0)
+  })
+})
+
+describe('the lioness defends her cub against a hyena (design.md §19.8, point 145c)', () => {
+  const shipped = balance.parentDefense
+
+  it('the lioness routs a lone hyena: defendChance caps at 0.95', () => {
+    // preyWeapon.lion 2.0 × predatorFlight.hyena 0.7 = 1.4, capped at 0.95 —
+    // the strongest defence in the game: a mother lion dominates a hyena.
+    expect(defendChance('lion', 'hyena', shipped)).toBe(0.95)
+  })
+
+  it('she can kill it, but driving off is far more common (register: sometimes, not often)', () => {
+    // killChance = (2.0 − 0.5) × killFlight.hyena 0.15 = 0.225 — real, but well
+    // below the 0.95 drive-off, so the hyena usually just flees.
+    expect(killChance('lion', 'hyena', shipped)).toBeCloseTo(0.225, 10)
+    expect(killChance('lion', 'hyena', shipped)).toBeLessThan(defendChance('lion', 'hyena', shipped))
+  })
+
+  it('the three-way outcome is boundary-exact: kill < 0.225 <= driveOff < 0.95 <= taken', () => {
+    expect(parentAttackOutcome('lion', 'hyena', 0, shipped)).toBe('kill')
+    expect(parentAttackOutcome('lion', 'hyena', 0.2249, shipped)).toBe('kill')
+    expect(parentAttackOutcome('lion', 'hyena', 0.225, shipped)).toBe('driveOff')
+    expect(parentAttackOutcome('lion', 'hyena', 0.9499, shipped)).toBe('driveOff')
+    expect(parentAttackOutcome('lion', 'hyena', 0.95, shipped)).toBe('taken')
+    expect(parentAttackOutcome('lion', 'hyena', 1, shipped)).toBe('taken')
+  })
+
+  it('the cub is rarely lost: the taken band is only the top 5%', () => {
+    // 1 − defendChance = 0.05 — a poignant but uncommon ending (the lioness
+    // stands vigil), consistent with the mother routing the threat.
+    expect(1 - defendChance('lion', 'hyena', shipped)).toBeCloseTo(0.05, 10)
+  })
+})
+
+describe('water-sheet standing anchors (point 196)', () => {
+  it('sheetAnchorY measures from the rendered surface, dipped by the body depth', () => {
+    // Bed 1.0 far below a 2.0 sheet: a chest-deep wader stands at 1.68 —
+    // anchoring to the bed instead read it a full channel depth too low.
+    expect(sheetAnchorY(2.0, 1.0, 0.32)).toBeCloseTo(1.68, 10)
+    // The struggling calf's shallow dip.
+    expect(sheetAnchorY(2.0, 1.0, 0.05)).toBeCloseTo(1.95, 10)
+  })
+
+  it('a missed edge texel falls back to the bed plus the nominal ribbon lift', () => {
+    expect(sheetAnchorY(null, 1.0, 0.05)).toBeCloseTo(1.25, 10)
+  })
+
+  it('a wader stands legs-in-the-sheet over deep water but on the bottom at the shallow edge', () => {
+    // Deep spot on an elevated lake: surface 2.0, bed 1.0 -> wade depth 0.25.
+    expect(waderStandY(1.0, 2.0)).toBeCloseTo(1.75, 10)
+    // Shallow edge: the bed is above the wade depth -> stand on the bottom.
+    expect(waderStandY(1.9, 2.0)).toBeCloseTo(1.9, 10)
+  })
+
+  it('the wader never sinks below the world floor', () => {
+    expect(waderStandY(-0.5, null)).toBeCloseTo(0.02, 10)
+  })
+})
+
+describe('ambientSavannaSpecies (point 208 A2 — visible herds match the region pool)', () => {
+  const regions = ['east', 'south', 'central', 'west', 'north'] as const
+
+  it('never seeds a grazer a region does not hold (swept over the roll range)', () => {
+    for (const region of regions) {
+      const pool = REGION_PREY[region]
+      for (let r = 0; r < 1; r += 0.001) {
+        const s = ambientSavannaSpecies(region, r)
+        if (s === null || s === 'elephant') continue
+        expect(pool).toContain(s) // the grazer is always in the region's own pool
+      }
+    }
+  })
+
+  it('keeps zebra, wildebeest and giraffe out of the west, central and north', () => {
+    for (const region of ['west', 'central', 'north'] as const) {
+      for (let r = 0; r < 1; r += 0.001) {
+        const s = ambientSavannaSpecies(region, r)
+        expect(s).not.toBe('zebra')
+        expect(s).not.toBe('wildebeest')
+        expect(s).not.toBe('giraffe')
+      }
+    }
+  })
+
+  it('roams elephants on every savanna and leaves the high band empty', () => {
+    for (const region of regions) {
+      expect(ambientSavannaSpecies(region, 0.05)).toBe('elephant')
+      expect(ambientSavannaSpecies(region, 0.9)).toBeNull()
+    }
+  })
+
+  it('still offers the east its full plains variety', () => {
+    const seen = new Set<string>()
+    for (let r = 0.12; r < 0.62; r += 0.005) {
+      const s = ambientSavannaSpecies('east', r)
+      if (s && s !== 'elephant') seen.add(s)
+    }
+    // Every east grazer appears across the band (no collapse to one species).
+    for (const g of REGION_PREY.east) expect(seen.has(g)).toBe(true)
+  })
+})
+
+describe('claimedByAnotherDrama (point 197 — one actor per emergent drama)', () => {
+  const base = { isLionVictim: false }
+
+  it('is false for a free animal', () => {
+    expect(claimedByAnotherDrama(base)).toBe(false)
+  })
+
+  it('is true for every already-owned state', () => {
+    expect(claimedByAnotherDrama({ ...base, caught: 0 })).toBe(true)
+    expect(claimedByAnotherDrama({ ...base, inWater: 1.2 })).toBe(true)
+    expect(claimedByAnotherDrama({ ...base, mired: 0 })).toBe(true)
+    expect(claimedByAnotherDrama({ ...base, crossing: { tx: 0, tz: 0, time: 0 } })).toBe(true)
+    expect(claimedByAnotherDrama({ ...base, fireTrapped: 3 })).toBe(true)
+    expect(claimedByAnotherDrama({ ...base, isLionVictim: true })).toBe(true)
+  })
+
+  it('treats a zero timer as owned (the drama just started)', () => {
+    // caught/mired/fireTrapped use `!== undefined`, so a 0 counter still counts.
+    expect(claimedByAnotherDrama({ ...base, caught: 0 })).toBe(true)
+    expect(claimedByAnotherDrama({ ...base, fireTrapped: 0 })).toBe(true)
+  })
+})
+
+describe('keepStreamedAnimal (the streaming cull judges the animal where it STANDS, never only its birth chunk)', () => {
+  const CHUNK = 24 // Wildlife.tsx CHUNK_SIZE
+  const chunkKeyAt = (x: number, z: number) => `${Math.floor(x / CHUNK)},${Math.floor(z / CHUNK)}`
+  const never = () => false
+  const always = () => true
+  const noChunks = () => false
+
+  it('keeps and re-homes an animal standing inside a live chunk after its birth chunk dropped', () => {
+    const a = { chunk: '-9,0', x: 30, z: 5 } // birth chunk long gone, standing in "1,0"
+    const live = new Set(['1,0'])
+    const v = keepStreamedAnimal(a, (k) => live.has(k), CHUNK, 0, 0, 110, never)
+    expect(v.keep).toBe(true)
+    expect(v.rehomeTo).toBe('1,0')
+    expect(v.rehomeTo).toBe(chunkKeyAt(a.x, a.z))
+  })
+
+  it('keeps an animal outside all live chunks while it is within despawnR of the player', () => {
+    const a = { chunk: '-9,0', x: 50, z: 0 }
+    const v = keepStreamedAnimal(a, noChunks, CHUNK, 0, 0, 110, never)
+    expect(v.keep).toBe(true)
+    expect(v.rehomeTo).toBeUndefined()
+  })
+
+  it('keeps an on-screen animal regardless of the despawn radius (swept across zoom levels)', () => {
+    // The projection backstop wins at every ring size (point-172 doctrine):
+    // despawnR = 100*zoom + 60, the animal parked well beyond each ring.
+    for (const zoom of [0.125, 0.5, 1.5, 2.2]) {
+      const despawnR = 100 * zoom + 60
+      const a = { chunk: '-9,0', x: despawnR + 40, z: 0 }
+      const v = keepStreamedAnimal(a, noChunks, CHUNK, 0, 0, despawnR, always)
+      expect(v.keep).toBe(true)
+    }
+  })
+
+  it('drops an animal that is off-screen, beyond despawnR and outside every live chunk', () => {
+    const a = { chunk: '-9,0', x: 200, z: 0 }
+    const v = keepStreamedAnimal(a, noChunks, CHUNK, 0, 0, 110, never)
+    expect(v.keep).toBe(false)
+  })
+
+  it('always keeps dead carcasses and untagged animals', () => {
+    // Dead: dissolves on screen; untagged: e.g. injected by the verification.
+    expect(keepStreamedAnimal({ dead: true, chunk: '-9,0', x: 500, z: 0 }, noChunks, CHUNK, 0, 0, 110, never).keep).toBe(true)
+    expect(keepStreamedAnimal({ x: 500, z: 0 }, noChunks, CHUNK, 0, 0, 110, never).keep).toBe(true)
+  })
+
+  it('regression: a fled animal on-screen beside the player survives the zoom-in that culls its birth chunk', () => {
+    // The reported vanish: the animal fled ~120 units from its birth chunk and
+    // stands ~30 units ahead of the player, in view. Zooming 0.5 -> 0.125
+    // collapses despawnR 110 -> 72.5 in one frame and streams the birth chunk
+    // out; the old birth-chunk filter deleted the animal mid-frame (its TRAA
+    // ghost read as scattered body parts).
+    const a = { chunk: chunkKeyAt(-120, 0), x: 30, z: 0 } // birth "-5,0", standing in "1,0"
+    const liveAt = (despawnR: number) => (key: string) => {
+      const [kx, kz] = key.split(',').map(Number)
+      return Math.hypot((kx + 0.5) * CHUNK, (kz + 0.5) * CHUNK) <= despawnR // player at origin
+    }
+    // Zoom 0.5: the birth chunk is still live — kept without re-homing.
+    const before = keepStreamedAnimal(a, liveAt(100 * 0.5 + 60), CHUNK, 0, 0, 100 * 0.5 + 60, always)
+    expect(before.keep).toBe(true)
+    expect(before.rehomeTo).toBeUndefined()
+    // Zoom 0.125: the birth chunk streams out (centre -108 beyond 72.5) while
+    // the chunk under its feet stays live — kept AND re-homed, never culled.
+    const after = keepStreamedAnimal(a, liveAt(100 * 0.125 + 60), CHUNK, 0, 0, 100 * 0.125 + 60, always)
+    expect(after.keep).toBe(true)
+    expect(after.rehomeTo).toBe('1,0')
+  })
+})
+
+describe('retainedSpawnChunks (point 278 — the streamed dressing must NOT grow over a session)', () => {
+  const CHUNK = 24
+  type A = { origin?: string; chunk?: string; x: number; z: number; dead?: boolean }
+
+  // A minimal, faithful model of the Wildlife.tsx streaming lifecycle that
+  // reproduces the real leak. Every in-range chunk deterministically seeds one
+  // animal at its centre (as spawnChunk does). Each frame the animals ROAM a
+  // little toward the player (as the elephant roam / flee / shore walk do), so
+  // one drifts off its birth chunk. The player OSCILLATES by ~one chunk (the
+  // ordinary back-and-forth driving / re-approach), so an origin chunk leaves
+  // the despawn ring while its roamer re-homes inward and survives — and, on the
+  // pre-278 path, that origin chunk re-seeds the next time it re-enters. This is
+  // the exact respawn-duplication captured live at a fixed desert/savanna anchor
+  // (docs/perf-276-findings.md): the animal count climbs while chunk keys do not.
+  const roamAndStream = (retain: boolean, steps: number): number[] => {
+    const spawnR = 40
+    const despawnR = 44
+    const base = 100.5 * CHUNK
+    let animals: A[] = []
+    let spawned = new Set<string>()
+    const counts: number[] = []
+    for (let i = 0; i < steps; i++) {
+      const px = base + (i % 2 ? 1 : -1) * CHUNK * 0.9 // back-and-forth of ~one chunk
+      const cx = Math.floor(px / CHUNK)
+      // Roam every animal toward the player (drifts it off its birth chunk).
+      for (const a of animals) a.x += Math.sign(px - a.x) * 6
+      // Seed each in-range chunk not already live.
+      for (let dx = -1; dx <= 1; dx++) {
+        const key = `${cx + dx},0`
+        if (spawned.has(key)) continue
+        const chx = (cx + dx + 0.5) * CHUNK
+        if (Math.abs(chx - px) > spawnR) continue
+        animals.push({ chunk: key, x: chx, z: 0 })
+        spawned.add(key)
+      }
+      // Despawn pass (matches Wildlife.tsx): re-home by feet, free by distance,
+      // and — with the fix — retain a chunk whose animal still lives.
+      const beyond = (key: string) => {
+        const kx = Number(key.split(',')[0])
+        return Math.abs((kx + 0.5) * CHUNK - px) > despawnR
+      }
+      const liveChunkHas = (key: string) => spawned.has(key) && !beyond(key)
+      animals = animals.filter((a) => {
+        const v = keepStreamedAnimal(a, liveChunkHas, CHUNK, px, 0, despawnR, () => false)
+        if (v.rehomeTo !== undefined) {
+          if (a.origin === undefined) a.origin = a.chunk // pin the birth chunk
+          a.chunk = v.rehomeTo
+        }
+        return v.keep
+      })
+      spawned = retain
+        ? retainedSpawnChunks(spawned, animals, beyond)
+        : new Set([...spawned].filter((k) => !beyond(k)))
+      counts.push(animals.length)
+    }
+    return counts
+  }
+
+  it('WITNESS: without retention the animal count grows without bound at a fixed anchor (the pre-278 leak)', () => {
+    const counts = roamAndStream(false, 12)
+    // Monotone, unbounded growth — the duplication accumulates every cycle.
+    for (let i = 1; i < counts.length; i++) expect(counts[i]).toBeGreaterThanOrEqual(counts[i - 1])
+    expect(counts[counts.length - 1]).toBeGreaterThan(counts[3] + 3)
+  })
+
+  it('with retention the animal count converges to a constant at a fixed anchor (the fix)', () => {
+    const counts = roamAndStream(true, 12)
+    // After the warm-up the count is flat — returning to the anchor re-seeds
+    // nothing that is already alive, however long the session runs.
+    const tail = counts.slice(3)
+    for (const c of tail) expect(c).toBe(tail[0])
+    expect(tail[0]).toBeGreaterThan(0)
+  })
+
+  it('frees a chunk key only once no living animal still originates there', () => {
+    const spawned = new Set(['0,0', '5,0'])
+    // An animal born in 0,0 has re-homed into a far cell but still lives.
+    const animals = [{ origin: '0,0', chunk: '9,9', x: 999, z: 999 } as A]
+    // Both keys are beyond the ring; 0,0 is retained (its animal lives), 5,0 freed.
+    const out = retainedSpawnChunks(spawned, animals, () => true)
+    expect(out.has('0,0')).toBe(true)
+    expect(out.has('5,0')).toBe(false)
+  })
+
+  it('keeps every in-range chunk and retains an out-of-range chunk whose animal lives', () => {
+    const spawned = new Set(['0,0', '1,0', '2,0'])
+    const animals = [{ origin: '2,0', chunk: '2,0', x: 60, z: 0 } as A]
+    const beyond = (k: string) => k === '2,0'
+    const out = retainedSpawnChunks(spawned, animals, beyond)
+    expect(out.has('0,0')).toBe(true) // in range
+    expect(out.has('1,0')).toBe(true) // in range
+    expect(out.has('2,0')).toBe(true) // out of range but its animal lives
+  })
+
+  it('falls back to the current chunk for a legacy animal with no origin', () => {
+    const spawned = new Set(['3,3'])
+    const animals = [{ chunk: '3,3', x: 0, z: 0 } as A] // no origin (untagged/legacy)
+    const out = retainedSpawnChunks(spawned, animals, () => true)
+    expect(out.has('3,3')).toBe(true)
+  })
+})
+
+describe('groundedBodyY / groundFollowY (point 283 — a moved body stands on the ground drawn under it)', () => {
+  // The buried warthog: a family drive (the living shield, the trample-grief
+  // charge) moved a parent up a slope but never re-derived its standing height,
+  // so it rendered a full unit below its fresh, higher ground. Both the movers
+  // and the renderer now feed the SAME terrain sample through groundedBodyY, so
+  // a drive that just moved can never leave the body sunk under the surface.
+
+  it('clamps the standing height to the ground floor, never below it', () => {
+    expect(groundedBodyY(1.39)).toBe(1.39)
+    expect(groundedBodyY(0)).toBe(GROUND_BODY_MIN_Y)
+    expect(groundedBodyY(-2)).toBe(GROUND_BODY_MIN_Y)
+    // Above the floor it is exactly the terrain height — the value the renderer
+    // draws the body origin at.
+    expect(groundedBodyY(5.25)).toBe(5.25)
+  })
+
+  it('ground-follows a mover to the height of the SAME cell the renderer would sample', () => {
+    // A synthetic terrain: a slope in x. The renderer draws the body at the
+    // height of the cell the animal STANDS on; a mover must re-derive a.y from
+    // that same sample so the two agree exactly.
+    const sample = (x: number, _z: number) => ({ type: 'savanna', height: 0.4 + x * 0.02 })
+    // The reported burial: a.y cached at the low spot (x=0 -> 0.40), then the
+    // shield burst carries the parent up the slope to x=50 (ground 1.40).
+    const movedX = 50
+    const followed = groundFollowY(movedX, 0, sample)
+    expect(followed).not.toBeNull()
+    // The re-derived height equals the renderer's own sample of the new cell —
+    // no residual gap, so `bodyY < ground - tolerance` (the buried assert) can
+    // never trip on a body that ground-followed its step.
+    expect(followed).toBe(groundedBodyY(sample(movedX, 0).height))
+    expect(followed).toBeCloseTo(1.4, 6)
+  })
+
+  it('leaves a water occupant untouched (null): its drama/sheet rules own the height', () => {
+    // On a river/lake/ocean cell the mover keeps its maintained height — the
+    // §19 water dramas and the chest-deep wade sheet own it, and the buried
+    // assert skips water cells for the same reason.
+    expect(groundFollowY(0, 0, () => ({ type: 'water', height: 0.9 }))).toBeNull()
+    expect(groundFollowY(0, 0, () => ({ type: 'ocean', height: 0 }))).toBeNull()
+  })
+
+  it('regression: re-grounding a step from low to high ground clears the buried assert margin', () => {
+    // Reproduce the exact assert geometry (bodyY=0.41, ground=1.39, scale=1):
+    // buried := bodyY < ground - 0.75*scale. A body that kept its stale height
+    // (0.41) at a 1.39 cell is buried; ground-following the step makes bodyY the
+    // cell height itself, so the margin is positive and the assert never fires.
+    const scale = 1
+    const cellHeight = 1.39
+    const staleY = 0.41
+    expect(staleY < cellHeight - 0.75 * scale).toBe(true) // the buried warthog
+    const regrounded = groundFollowY(0, 0, () => ({ type: 'savanna', height: cellHeight }))!
+    expect(regrounded < cellHeight - 0.75 * scale).toBe(false) // no longer buried
+    expect(regrounded).toBe(cellHeight)
+  })
+})
+
+describe('findAdopter (design.md §19.8, point 262 — an orphan is taken in by a nearby adult)', () => {
+  const juv = { species: 'zebra', x: 0, z: 0 }
+  const adult = (over: Partial<AdoptionAdult> = {}): AdoptionAdult => ({
+    species: 'zebra', x: 5, z: 0, ...over,
+  })
+
+  it('isPredatorSpecies flags every predator and no grazer', () => {
+    for (const p of ['lion', 'cheetah', 'leopard', 'hyena', 'crocodile']) {
+      expect(isPredatorSpecies(p)).toBe(true)
+    }
+    for (const g of ['zebra', 'wildebeest', 'antelope', 'giraffe', 'warthog', 'elephant', 'plover']) {
+      expect(isPredatorSpecies(g)).toBe(false)
+    }
+  })
+
+  it('returns the NEAREST eligible adult of the right species in range', () => {
+    const near = adult({ x: 4, z: 0 })
+    const far = adult({ x: 15, z: 0 })
+    const got = findAdopter(juv, [far, near], 30)
+    expect(got).toBe(near)
+  })
+
+  it('returns null when no adult is within the radius', () => {
+    const far = adult({ x: 100, z: 0 })
+    expect(findAdopter(juv, [far], 20)).toBeNull()
+    // …and the same adult inside the radius IS found (the radius is the gate).
+    expect(findAdopter(juv, [adult({ x: 10, z: 0 })], 20)).not.toBeNull()
+  })
+
+  it('skips a predator, a dead adult, a juvenile and a wrong-species adult', () => {
+    const predator = adult({ species: 'lion', x: 1, z: 0 })
+    const dead = adult({ x: 1, z: 1, dead: true })
+    const juvenile = adult({ x: 1, z: 2, young: true })
+    const wrongSpecies = adult({ species: 'wildebeest', x: 1, z: 3 })
+    const good = adult({ x: 9, z: 0 })
+    const got = findAdopter(juv, [predator, dead, juvenile, wrongSpecies, good], 30)
+    expect(got).toBe(good) // the only eligible one, though the farthest
+  })
+
+  it('never adopts the juvenile to itself', () => {
+    const self = { species: 'zebra', x: 0, z: 0, young: true } as AdoptionAdult & { x: number; z: number }
+    expect(findAdopter(self, [self], 30)).toBeNull()
+  })
+
+  it('never picks the killer that just took the parent', () => {
+    const killer = adult({ x: 2, z: 0 })
+    const other = adult({ x: 8, z: 0 })
+    expect(findAdopter(juv, [killer, other], 30, { killer })).toBe(other)
+  })
+
+  it('skips an adult already raising a LIVE calf but accepts one whose calf is dead (keeps 1:1)', () => {
+    const busy = adult({ x: 2, z: 0, child: { dead: false } })
+    const free = adult({ x: 9, z: 0 })
+    expect(findAdopter(juv, [busy, free], 30)).toBe(free)
+    // A bereaved adult (its own calf dead) is free to adopt again.
+    const bereaved = adult({ x: 2, z: 0, child: { dead: true } })
+    expect(findAdopter(juv, [bereaved], 30)).toBe(bereaved)
+  })
+
+  it('uses the default predator set when no predicate is passed', () => {
+    // A homogeneous predator pool (a lion cub among lionesses) finds no adopter.
+    const cub = { species: 'lion', x: 0, z: 0 }
+    const lionesses = [{ species: 'lion', x: 2, z: 0 }, { species: 'lion', x: 3, z: 0 }]
+    expect(findAdopter(cub, lionesses, 30)).toBeNull()
+  })
+})
+
+describe('the freed calf runs its escape before it is adopted (design.md §19.8, point 311)', () => {
+  // The regression: the point-262 adoption runs every frame, so it claimed a
+  // calf the instant its parent's SACRIFICE freed it — the calf was re-parented
+  // in the same frame and walked back to its adoptive parent past the feeding
+  // predator instead of fleeing, and the §19.8 sacrifice ending never read as
+  // an escape. The two rules below mirror the live pair in Wildlife.tsx (the
+  // sacrifice resolution and the per-frame adoption pass) so the ORDER between
+  // them is what these tests pin.
+  interface Beast extends AdoptionAdult {
+    x: number
+    z: number
+    species: string
+    young?: boolean
+    dead?: boolean
+    caught?: number
+    parent?: Beast
+    child?: Beast
+    escape?: number
+  }
+  const WINDOW = 12 // balance.family.escapeSeconds' shape; the value itself is calibratable
+  const RADIUS = 20 // balance.family.adoptionRadius
+
+  const family = () => {
+    const parent: Beast = { species: 'zebra', x: 0, z: 0 }
+    const calf: Beast = { species: 'zebra', x: 1, z: 0, young: true, caught: 5, parent }
+    parent.child = calf
+    const herdMate: Beast = { species: 'zebra', x: 4, z: 0 } // eligible adopter, well in range
+    return { parent, calf, herdMate, herd: [parent, calf, herdMate] }
+  }
+
+  /** The live sacrifice resolution: the hunter takes the charging parent, the
+   *  calf is freed and starts its escape run (`escape` set only here). `null`
+   *  replays the pre-311 code, which freed the calf with no escape window. */
+  const sacrifice = (parent: Beast, calf: Beast, escapeSeconds: number | null = WINDOW) => {
+    calf.caught = undefined
+    calf.parent = undefined
+    parent.child = undefined
+    if (escapeSeconds !== null) calf.escape = escapeSeconds
+    parent.dead = true
+  }
+
+  /** The live per-frame adoption pass (Wildlife.tsx): tick every escape run
+   *  first (hard deadline), then adopt each parentless juvenile. */
+  const adoptionFrame = (herd: Beast[], dt: number) => {
+    for (const a of herd) {
+      if (a.escape !== undefined) a.escape = tickEscapeRun(a.escape, dt)
+      if (a.dead || a.young !== true) continue
+      if (a.parent && !a.parent.dead) continue
+      const adopter = findAdopter(a, herd, RADIUS)
+      if (adopter) {
+        a.parent = adopter
+        adopter.child = a
+      }
+    }
+  }
+
+  it('a CAUGHT calf is not adopted mid-struggle — the ending resolves first', () => {
+    // The other half of the same ordering bug: a calf orphaned before (or as)
+    // a predator seizes it was adopted while it struggled, and the fresh
+    // "parent" charged in — rewriting an ending that was already resolving
+    // (it died in the calf's place, or drove the predator off and the calf
+    // never died at all).
+    const { parent, calf, herdMate, herd } = family()
+    parent.dead = true // orphaned by any cause…
+    parent.child = undefined
+    calf.parent = undefined
+    calf.caught = 5 // …and seized: the struggle owns it now
+    expect(adoptionHeld(calf)).toBe(true)
+    for (let i = 0; i < 20; i++) {
+      adoptionFrame(herd, 0.25)
+      expect(calf.parent).toBeUndefined()
+    }
+    // The catch resolves (freed here, killed in the other branch) and the
+    // adoption follows on the very next frame.
+    calf.caught = undefined
+    adoptionFrame(herd, 0.25)
+    expect(calf.parent).toBe(herdMate)
+  })
+
+  it('adoptionHeld covers both running endings and nothing else', () => {
+    expect(adoptionHeld({})).toBe(false) // a plain orphan is adoptable
+    expect(adoptionHeld({ caught: 5 })).toBe(true)
+    expect(adoptionHeld({ caught: 0.01 })).toBe(true) // still gripped
+    expect(adoptionHeld({ escape: 3 })).toBe(true)
+    expect(adoptionHeld({ escape: 0 })).toBe(false) // the escape is over
+    expect(adoptionHeld({ caught: 5, escape: 3 })).toBe(true)
+  })
+
+  it('a sacrifice-freed calf is NOT adopted while its escape runs', () => {
+    const { parent, calf, herd } = family()
+    sacrifice(parent, calf)
+    // Frame after frame through the whole window: the calf stays parentless, so
+    // the render loop keeps it in the fleeing branch instead of the follow one.
+    for (let t = 0; t < WINDOW - 0.5; t += 0.25) {
+      adoptionFrame(herd, 0.25)
+      expect(calf.parent).toBeUndefined()
+      expect(inEscapeRun(calf)).toBe(true)
+    }
+  })
+
+  it('WITHOUT the escape window the adoption steals the ending on the first frame (the point-311 witness)', () => {
+    const { parent, calf, herdMate, herd } = family()
+    sacrifice(parent, calf, null) // pre-311 behaviour: freed, no escape run
+    adoptionFrame(herd, 0.25)
+    expect(calf.parent).toBe(herdMate) // re-parented the same frame — no escape
+  })
+
+  it('once the escape completes the calf IS adopted (point 262 deferred, not dropped)', () => {
+    const { parent, calf, herdMate, herd } = family()
+    sacrifice(parent, calf)
+    for (let i = 0; i < Math.ceil(WINDOW / 0.25) + 1; i++) adoptionFrame(herd, 0.25)
+    expect(calf.escape).toBeUndefined()
+    expect(calf.parent).toBe(herdMate)
+    // The parent↔child link is whole again, so every §19.8 drama can recur.
+    expect(herdMate.child).toBe(calf)
+  })
+
+  it('the window boundary is exact: a tick of exactly the time left ENDS it', () => {
+    expect(tickEscapeRun(undefined, 0.5)).toBeUndefined() // no run → nothing to tick
+    expect(tickEscapeRun(2, 0.5)).toBeCloseTo(1.5, 10)
+    expect(tickEscapeRun(2, 1.999)).toBeCloseTo(0.001, 10) // a sliver left: still running
+    expect(inEscapeRun({ escape: 0.001 })).toBe(true)
+    expect(tickEscapeRun(2, 2)).toBeUndefined() // exactly the remainder closes it
+    expect(tickEscapeRun(2, 5)).toBeUndefined() // an overshooting frame closes it too
+    expect(inEscapeRun({ escape: 0 })).toBe(false) // zero is over, not running
+    expect(inEscapeRun({})).toBe(false)
+    // …and the gate follows the predicate exactly, on both sides of the edge.
+    const adult: AdoptionAdult = { species: 'zebra', x: 1, z: 0 }
+    expect(findAdopter({ species: 'zebra', x: 0, z: 0, escape: 0.001 }, [adult], RADIUS)).toBeNull()
+    expect(findAdopter({ species: 'zebra', x: 0, z: 0, escape: 0 }, [adult], RADIUS)).toBe(adult)
+    expect(findAdopter({ species: 'zebra', x: 0, z: 0 }, [adult], RADIUS)).toBe(adult)
+  })
+
+  it('the escape always resolves — invariant I4 — from any window and frame time', () => {
+    for (const w of [0.1, 1, 12, 60]) {
+      for (const dt of [1 / 240, 1 / 60, 0.25, 1, 3]) {
+        let e: number | undefined = w
+        const frames = Math.ceil(w / dt) + 1
+        for (let i = 0; i < frames; i++) e = tickEscapeRun(e, dt)
+        expect(e).toBeUndefined() // never pinned, whatever the frame times
+      }
+    }
+  })
+
+  it('no other §19.8 ending is deferred: an orphan of any OTHER cause is adopted at once', () => {
+    // Trample grief, drowning, the crocodile, a streamed-out parent: none of
+    // them frees a calf mid-hunt, so none sets an escape run — the point-262
+    // adoption still fires on the very first frame.
+    const { parent, calf, herdMate, herd } = family()
+    calf.caught = undefined
+    parent.dead = true // died on its own (no sacrifice, no freeing)
+    parent.child = undefined
+    calf.parent = undefined
+    adoptionFrame(herd, 0.25)
+    expect(calf.parent).toBe(herdMate)
+  })
+
+  it('the too-late ending is untouched: a dead calf is never adopted, escape or not', () => {
+    const { parent, calf, herd } = family()
+    sacrifice(parent, calf)
+    calf.dead = true // taken alongside the parent (the too-late branch)
+    for (let i = 0; i < Math.ceil(WINDOW / 0.25) + 4; i++) adoptionFrame(herd, 0.25)
+    expect(calf.parent).toBeUndefined()
+    expect(calf.escape).toBeUndefined() // the window still ran down (no dangling state)
+  })
+
+  it('the shipped escape window outlasts the struggle it follows', () => {
+    // The calf is freed at the END of its ~5 s struggle, and the flight then has
+    // to carry it clear of the kill — so the window is sized well above it.
+    expect(balance.family.escapeSeconds).toBeGreaterThan(5)
+  })
+})
+
+describe("a juvenile's bond to its parent RESOLVES, never hangs (design.md §19.8, point 341)", () => {
+  // The regression: the streaming cull removes an animal by distance from the
+  // player, and it cleared NEITHER `parent` nor `child`. A player who drove a
+  // calf far enough left its parent behind, and because the follow branch only
+  // tests `!parent.dead` — a culled parent is not dead — the calf walked to a
+  // frozen phantom position and nursed at nothing, while the §19.8 orphan
+  // adoption (which waits for a DEAD parent) never fired. Two rules end it: the
+  // cull severs the pair, and a separation window resolves everything else.
+  interface Beast extends AdoptionAdult {
+    x: number
+    z: number
+    species: string
+    young?: boolean
+    dead?: boolean
+    caught?: number
+    escape?: number
+    chunk?: string
+    parent?: Beast
+    child?: Beast
+    separated?: number
+  }
+  const CHUNK = 100
+  const FOLLOW = 8.1 // balance.family.followRadius' shape
+  const WINDOW = 45 // balance.family.reunionSeconds' shape; the value stays calibratable
+  const RADIUS = 20 // balance.family.adoptionRadius
+
+  const pair = (parentX = 0, calfX = 1) => {
+    const parent: Beast = { species: 'zebra', x: parentX, z: 0, chunk: '0,0' }
+    const calf: Beast = { species: 'zebra', x: calfX, z: 0, young: true, chunk: '0,0', parent }
+    parent.child = calf
+    return { parent, calf }
+  }
+
+  /** The live streaming cull (Wildlife.tsx): keep by distance/frame, and sever
+   *  the family links of everything it drops. No live chunks and no frustum keep,
+   *  so distance alone decides — as it does when the player drives away. */
+  const cullFrame = (herd: Beast[], playerX: number, despawnR: number): Beast[] =>
+    herd.filter((a) => {
+      const v = keepStreamedAnimal(a, () => false, CHUNK, playerX, 0, despawnR, () => false)
+      if (!v.keep) severFamilyLinks(a)
+      return v.keep
+    })
+
+  /** The live family pass (Wildlife.tsx): tick the separation of every juvenile
+   *  with a living parent, resolve the bond at the window, then run the ordinary
+   *  point-262 adoption over every parentless young. */
+  const familyFrame = (herd: Beast[], dt: number, window = WINDOW) => {
+    for (const a of herd) {
+      if (a.dead || a.young !== true) continue
+      let released: Beast | null = null
+      if (a.parent && !a.parent.dead) {
+        const sep = tickFamilySeparation(
+          a.separated,
+          Math.hypot(a.parent.x - a.x, a.parent.z - a.z),
+          FOLLOW,
+          dt,
+          window,
+          adoptionHeld(a),
+        )
+        a.separated = sep.separated
+        if (!sep.resolve) continue
+        released = a.parent
+        severFamilyLinks(a)
+      } else {
+        a.separated = undefined
+      }
+      const adopter = findAdopter(a, herd, RADIUS, { exclude: released })
+      if (adopter) {
+        a.parent = adopter
+        adopter.child = a
+      }
+    }
+  }
+
+  it('severFamilyLinks clears BOTH directions', () => {
+    const { parent, calf } = pair()
+    severFamilyLinks(calf)
+    expect(calf.parent).toBeUndefined()
+    expect(parent.child).toBeUndefined()
+    // …and from the parent's side just the same.
+    const b = pair()
+    severFamilyLinks(b.parent)
+    expect(b.parent.child).toBeUndefined()
+    expect(b.calf.parent).toBeUndefined()
+  })
+
+  it('severFamilyLinks leaves a FOREIGN back-reference alone', () => {
+    // A calf already re-parented elsewhere: cutting its former parent must not
+    // clear the link it now holds to its new one.
+    const { parent, calf } = pair()
+    const newParent: Beast = { species: 'zebra', x: 30, z: 0 }
+    calf.parent = newParent
+    newParent.child = calf
+    severFamilyLinks(parent) // parent.child still points at the calf
+    expect(parent.child).toBeUndefined()
+    expect(calf.parent).toBe(newParent) // not cut
+    expect(newParent.child).toBe(calf)
+    expect(severFamilyLinks({})).toBeUndefined() // an unlinked animal is a no-op
+  })
+
+  it('the CULL clears the pair: a survivor never references a removed animal', () => {
+    const { parent, calf } = pair(0, 1)
+    // The player drives off: the parent is now beyond the despawn ring, the calf
+    // (which the player followed) is not.
+    parent.x = 500
+    const left = cullFrame([parent, calf], 1, 110)
+    expect(left).toEqual([calf]) // the parent was streamed out
+    expect(calf.parent).toBeUndefined() // …and left NO phantom behind
+  })
+
+  it('a calf whose parent is culled is adopted in the very same frame', () => {
+    const { parent, calf } = pair(0, 1)
+    const herdMate: Beast = { species: 'zebra', x: 5, z: 0, chunk: '0,0' }
+    parent.x = 500 // out of the ring
+    const left = cullFrame([parent, calf, herdMate], 1, 110)
+    familyFrame(left, 1 / 60)
+    expect(calf.parent).toBe(herdMate)
+    expect(herdMate.child).toBe(calf)
+    expect(calf.separated).toBeUndefined() // in reach of its new parent
+  })
+
+  it('a culled CALF leaves its parent shielding nothing', () => {
+    const { parent, calf } = pair(0, 1)
+    calf.x = 500
+    const left = cullFrame([parent, calf], 1, 110)
+    expect(left).toEqual([parent])
+    expect(parent.child).toBeUndefined()
+  })
+
+  it('the separation clock runs ONLY while the calf is out of reach', () => {
+    // Inside the follow radius nothing accumulates, however long it stands there.
+    let s: number | undefined
+    for (let i = 0; i < 1000; i++) {
+      const r = tickFamilySeparation(s, FOLLOW, FOLLOW, 1 / 60, WINDOW)
+      s = r.separated
+      expect(r.resolve).toBe(false)
+      expect(s).toBeUndefined()
+    }
+    // Out of reach it accumulates…
+    s = tickFamilySeparation(undefined, FOLLOW + 0.01, FOLLOW, 2, WINDOW).separated
+    expect(s).toBeCloseTo(2, 10)
+    s = tickFamilySeparation(s, 40, FOLLOW, 3, WINDOW).separated
+    expect(s).toBeCloseTo(5, 10)
+    // …and coming back inside RESETS it (a gambol at the leash edge, a short
+    // flight): the next excursion starts from zero, so it can never add up.
+    const back = tickFamilySeparation(s, FOLLOW - 0.5, FOLLOW, 1 / 60, WINDOW)
+    expect(back.resolve).toBe(false)
+    expect(back.separated).toBeUndefined()
+  })
+
+  it('the window boundary is exact: a tick landing on it resolves, a sliver short does not', () => {
+    const short = tickFamilySeparation(WINDOW - 1, 40, FOLLOW, 0.999, WINDOW)
+    expect(short.resolve).toBe(false)
+    expect(short.separated).toBeCloseTo(WINDOW - 0.001, 10)
+    const exact = tickFamilySeparation(WINDOW - 1, 40, FOLLOW, 1, WINDOW)
+    expect(exact.resolve).toBe(true)
+    expect(exact.separated).toBeUndefined() // the clock is cleared with the bond
+    const over = tickFamilySeparation(WINDOW - 1, 40, FOLLOW, 5, WINDOW)
+    expect(over.resolve).toBe(true) // an overshooting frame resolves too
+  })
+
+  it('a running §19.8 ending FREEZES the clock — that drama resolves first', () => {
+    // Caught by a predator, or escaping after the parent's sacrifice: the pair
+    // belongs to that ending, whose own deadline is hard (point 311).
+    const held = tickFamilySeparation(WINDOW - 0.5, 40, FOLLOW, 5, WINDOW, true)
+    expect(held.resolve).toBe(false)
+    expect(held.separated).toBeCloseTo(WINDOW - 0.5, 10) // frozen, not reset
+    // The moment the ending lifts, the window resolves as usual.
+    expect(tickFamilySeparation(WINDOW - 0.5, 40, FOLLOW, 5, WINDOW, false).resolve).toBe(true)
+  })
+
+  it('a window of zero switches the separation OFF (a debug edit must not sever every bond)', () => {
+    const off = tickFamilySeparation(3, 40, FOLLOW, 1, 0)
+    expect(off.resolve).toBe(false)
+    expect(off.separated).toBeUndefined()
+    expect(tickFamilySeparation(3, 40, FOLLOW, 1, -5).resolve).toBe(false)
+  })
+
+  it('the separation ALWAYS resolves — invariant I4 — from any window and frame time', () => {
+    for (const w of [0.5, 5, 45, 120]) {
+      for (const dt of [1 / 240, 1 / 60, 0.25, 1, 3]) {
+        let s: number | undefined
+        let resolved = false
+        const frames = Math.ceil(w / dt) + 1
+        for (let i = 0; i < frames && !resolved; i++) {
+          const r = tickFamilySeparation(s, 999, FOLLOW, dt, w)
+          s = r.separated
+          resolved = r.resolve
+        }
+        expect(resolved).toBe(true)
+      }
+    }
+  })
+
+  it('an out-of-reach calf keeps its parent until the window is out, then is adopted', () => {
+    const { parent, calf } = pair(0, 0)
+    calf.x = 15 // out of reach (> FOLLOW), but well inside the adoption radius
+    const herdMate: Beast = { species: 'zebra', x: 18, z: 0 }
+    const herd = [parent, calf, herdMate]
+    for (let t = 0; t < WINDOW - 1; t += 0.5) {
+      familyFrame(herd, 0.5)
+      expect(calf.parent).toBe(parent) // the bond holds while the window runs
+    }
+    while (calf.parent === parent) familyFrame(herd, 0.5)
+    expect(calf.parent).toBe(herdMate) // resolved → a LIVING parent nearby
+    expect(herdMate.child).toBe(calf)
+    expect(parent.child).toBeUndefined() // the old bond is cut on both sides
+  })
+
+  it('the released parent is not handed the same calf straight back', () => {
+    // It is the nearest eligible adult the instant its link is cleared, so
+    // without the exclusion the resolve would be a no-op and the walk toward a
+    // parent it cannot reach would simply start over.
+    const { parent, calf } = pair(0, 0)
+    calf.x = 15
+    const herd = [parent, calf]
+    while (calf.parent === parent) familyFrame(herd, 0.5)
+    expect(calf.parent).toBeUndefined() // roams on as an ordinary juvenile
+    expect(parent.child).toBeUndefined()
+    // From the NEXT frame on it is an ordinary candidate again, so a pair that
+    // merely drifted apart re-forms — with a fresh window, not a stale clock.
+    familyFrame(herd, 0.5)
+    expect(calf.parent).toBe(parent)
+    expect(parent.child).toBe(calf)
+    expect(calf.separated).toBeUndefined()
+  })
+
+  it('with no eligible adult the resolved calf ends PARENTLESS, never bonded to a ghost', () => {
+    const { parent, calf } = pair(0, 0)
+    calf.x = 40 // far out of reach; nothing else of its kind anywhere near
+    const predator: Beast = { species: 'lion', x: 41, z: 0 } // never an adopter
+    const otherKind: Beast = { species: 'wildebeest', x: 41, z: 1 }
+    const herd = [parent, calf, predator, otherKind]
+    for (let t = 0; t <= WINDOW + 5; t += 0.5) familyFrame(herd, 0.5)
+    expect(calf.parent).toBeUndefined()
+    expect(calf.separated).toBeUndefined() // no clock left running either
+    expect(parent.child).toBeUndefined()
+  })
+
+  it('a healthy pair at play never trips the window', () => {
+    // The scene's play cycle: a bout of balance.family.gambolBoutSeconds out at
+    // the gambol range, then the follow leg back inside the leash. The calf drops
+    // into reach once per cycle, which resets the clock — so the window never
+    // fires however long the pair grazes together.
+    const { parent, calf } = pair(0, 0)
+    const herd = [parent, calf]
+    const dt = 1 / 30
+    for (let cycle = 0; cycle < 20; cycle++) {
+      for (let t = 0; t < balance.family.gambolBoutSeconds; t += dt) {
+        calf.x = balance.family.gambolRange // out at the leash edge
+        familyFrame(herd, dt)
+      }
+      for (let t = 0; t < 12; t += dt) {
+        calf.x = 1 // followed back in and nursing (the idle gap)
+        familyFrame(herd, dt)
+      }
+      expect(calf.parent).toBe(parent)
+    }
+  })
+
+  it('the shipped window outlasts a whole play cycle', () => {
+    // GAMBOL_IDLE_SECONDS is 12 s in the scene, so one cycle is bout + 12 s; the
+    // window must sit clear above it or ordinary play would end healthy bonds.
+    expect(balance.family.reunionSeconds).toBeGreaterThan(balance.family.gambolBoutSeconds + 12)
+    expect(balance.family.reunionSeconds).toBeGreaterThan(balance.family.escapeSeconds)
+  })
+})
+
+describe('the orphan mourns before it plays again (design.md §19.8, point 369)', () => {
+  interface Beast {
+    species: string
+    x: number
+    z: number
+    young?: boolean
+    dead?: boolean
+    caught?: number
+    escape?: number
+    parent?: Beast
+    child?: Beast
+    separated?: number
+    mourn?: number
+    mournAt?: { x: number; z: number }
+  }
+  const FOLLOW = 8.1 // balance.family.followRadius' shape
+  const WINDOW = 45 // balance.family.reunionSeconds' shape
+  const RADIUS = 20 // balance.family.adoptionRadius
+  const MOURN = 30 // balance.family.mourningSeconds' shape; the value stays calibratable
+
+  const pair = (parentX = 0, calfX = 1) => {
+    const parent: Beast = { species: 'zebra', x: parentX, z: 0 }
+    const calf: Beast = { species: 'zebra', x: calfX, z: 0, young: true, parent }
+    parent.child = calf
+    return { parent, calf }
+  }
+
+  /** The live family pass (Wildlife.tsx) with the mourning window in it: tick
+   *  the countdown for every animal (a hard deadline that always resolves), open
+   *  it on a parent that DIED — severing the bond, so nothing survives holding a
+   *  body that is gone (point 341) — then run the ordinary point-262 adoption. */
+  const familyFrame = (herd: Beast[], dt: number, mourning = MOURN) => {
+    for (const a of herd) {
+      if (a.mourn !== undefined) {
+        a.mourn = tickMourning(a.mourn, dt)
+        if (a.mourn === undefined) a.mournAt = undefined // the watch is over — play again
+      }
+      if (a.escape !== undefined) a.escape = tickEscapeRun(a.escape, dt)
+      if (a.dead || a.young !== true) continue
+      let released: Beast | null = null
+      if (a.parent && !a.parent.dead) {
+        const sep = tickFamilySeparation(
+          a.separated,
+          Math.hypot(a.parent.x - a.x, a.parent.z - a.z),
+          FOLLOW,
+          dt,
+          WINDOW,
+          adoptionHeld(a),
+        )
+        a.separated = sep.separated
+        if (!sep.resolve) continue
+        released = a.parent
+        severFamilyLinks(a) // an administrative ending: nothing to grieve
+      } else {
+        a.separated = undefined
+        if (orphanMourns(a.parent)) {
+          const body = a.parent as Beast
+          a.mourn = mourning
+          a.mournAt = { x: body.x, z: body.z }
+          severFamilyLinks(a)
+        }
+      }
+      const adopter = findAdopter(a, herd, RADIUS, { exclude: released })
+      if (adopter) {
+        a.parent = adopter
+        adopter.child = a
+      }
+    }
+  }
+
+  it('THE TRIGGER IS DEATH: only a parent that died opens the window', () => {
+    expect(orphanMourns({ dead: true })).toBe(true)
+    expect(orphanMourns({})).toBe(false) // alive and well
+    expect(orphanMourns({ dead: false })).toBe(false)
+    expect(orphanMourns(undefined)).toBe(false) // the bond was already cut
+    expect(orphanMourns(null)).toBe(false)
+  })
+
+  it('a parent that dies leaves its calf mourning AT THE SPOT it fell', () => {
+    const { parent, calf } = pair(4, 5)
+    const herd = [parent, calf]
+    familyFrame(herd, 1 / 60)
+    expect(calf.mourn).toBeUndefined() // nothing has happened yet
+    parent.dead = true
+    familyFrame(herd, 1 / 60)
+    expect(calf.mourn).toBeCloseTo(MOURN, 5) // armed this frame — the tick starts next
+    expect(calf.mournAt).toEqual({ x: 4, z: 0 })
+    expect(calf.parent).toBeUndefined() // no calf holds a body that is gone
+    // The anchor is a POINT: moving or removing the carcass cannot drag the watch.
+    parent.x = 999
+    expect(juvenileAnchor(calf)).toEqual({ x: 4, z: 0 })
+  })
+
+  it('a bond ended by SEPARATION is never mourned — the calf saw nothing happen', () => {
+    const { parent, calf } = pair(0, 0)
+    calf.x = 15 // out of reach of a LIVING parent: the point-341 resolve
+    const herd = [parent, calf]
+    while (calf.parent === parent) familyFrame(herd, 0.5)
+    expect(calf.mourn).toBeUndefined()
+    expect(calf.mournAt).toBeUndefined()
+    expect(calfMayPlay(true, calf)).toBe(true) // it plays on, as it should
+  })
+
+  it('a parent STREAMED OUT is never mourned either (point 341 cuts the bond, nobody died)', () => {
+    const { parent, calf } = pair(0, 1)
+    severFamilyLinks(parent) // the cull's spelling: removed, not dead
+    const herd = [calf]
+    familyFrame(herd, 1 / 60)
+    expect(calf.mourn).toBeUndefined()
+  })
+
+  it('the play selector is FALSE for the whole window and TRUE after it', () => {
+    const { parent, calf } = pair(0, 1)
+    const herd = [parent, calf]
+    parent.dead = true
+    familyFrame(herd, 1 / 60)
+    const dt = 1 / 60
+    for (let elapsed = 0; elapsed < MOURN - dt; elapsed += dt) {
+      expect(isMourning(calf)).toBe(true)
+      expect(calfMayPlay(true, calf)).toBe(false) // grief silences the gambol
+      familyFrame(herd, dt)
+    }
+    // …and the EXIT path: the window runs out and the calf plays again.
+    while (calf.mourn !== undefined) familyFrame(herd, dt)
+    expect(isMourning(calf)).toBe(false)
+    expect(calfMayPlay(true, calf)).toBe(true)
+    expect(calf.mournAt).toBeUndefined() // the watch is packed away with it
+  })
+
+  it('ADOPTION runs on its own clock: it changes WHO the calf follows, not its demeanour', () => {
+    const { parent, calf } = pair(0, 1)
+    const adopter: Beast = { species: 'zebra', x: 3, z: 0 }
+    const herd = [parent, calf, adopter]
+    parent.dead = true
+    familyFrame(herd, 1 / 60)
+    expect(calf.parent).toBe(adopter) // taken in at once (point 262)
+    expect(adopter.child).toBe(calf)
+    expect(isMourning(calf)).toBe(true) // …and STILL mourning: the two never cancel
+    // It follows its new parent, subdued — the anchor is the living adult again,
+    // while the play gate stays shut for the rest of the window.
+    expect(juvenileAnchor(calf)).toBe(adopter)
+    expect(calfMayPlay(true, calf)).toBe(false)
+    for (let t = 0; t < MOURN + 5; t += 0.5) familyFrame(herd, 0.5)
+    expect(isMourning(calf)).toBe(false)
+    expect(calf.parent).toBe(adopter) // and the adoption outlives the grief
+    expect(calfMayPlay(true, calf)).toBe(true)
+  })
+
+  it('a SECOND bereavement mourns again (the adoptive parent is grieved like the first)', () => {
+    const { parent, calf } = pair(0, 1)
+    const adopter: Beast = { species: 'zebra', x: 3, z: 0 }
+    const herd = [parent, calf, adopter]
+    parent.dead = true
+    familyFrame(herd, 0.5) // the first bereavement: mourned and adopted
+    while (calf.mourn !== undefined) familyFrame(herd, 0.5)
+    expect(calf.parent).toBe(adopter)
+    adopter.dead = true
+    familyFrame(herd, 0.5)
+    expect(isMourning(calf)).toBe(true)
+    expect(calf.mournAt).toEqual({ x: 3, z: 0 })
+  })
+
+  it('FEAR STILL WINS: a mourning calf inside the shy ring flees the traveller', () => {
+    // The mourning window deliberately does NOT enter the drama state fed to the
+    // arbitration (point 252), so every danger response outranks it — a grieving
+    // calf must never stand still for a predator.
+    const calf: Beast = { species: 'zebra', x: 0, z: 0, young: true, mourn: MOURN, mournAt: { x: 0, z: 0 } }
+    expect(isMourning(calf)).toBe(true)
+    const pick = resolveFleeTarget(
+      0,
+      0,
+      {
+        species: 'zebra',
+        isJuvenile: true,
+        preyWeapon: balance.parentDefense.preyWeapon,
+        drama: {}, // what dramaStateOf builds for a merely mourning calf
+        drinking: false,
+        stagedBankVictim: false,
+      },
+      [],
+      [[0, -4]],
+      3.2,
+      6,
+    )
+    expect(pick).not.toBeNull()
+    expect(pick!.source).toBe('player')
+    // And the seized/hunted states still own their frame, mourning or not.
+    expect(adoptionHeld({ caught: 3 })).toBe(true)
+  })
+
+  it('the window ALWAYS resolves — invariant I4 — from any length and frame time', () => {
+    for (const w of [0.5, 5, 30, 120]) {
+      for (const dt of [1 / 240, 1 / 60, 0.25, 1, 7]) {
+        let m: number | undefined = w
+        let frames = 0
+        while (m !== undefined && frames < Math.ceil(w / dt) + 2) {
+          m = tickMourning(m, dt)
+          frames++
+        }
+        expect(m).toBeUndefined()
+      }
+    }
+    // Exact boundary: a tick of exactly the remaining time ENDS the window.
+    expect(tickMourning(2, 2)).toBeUndefined()
+    expect(tickMourning(2, 1.999)).toBeCloseTo(0.001, 6)
+    expect(tickMourning(undefined, 1)).toBeUndefined()
+  })
+
+  it('the anchor falls back to the herd once the watch is over', () => {
+    expect(juvenileAnchor({})).toBeNull() // an ordinary parentless juvenile roams
+    expect(juvenileAnchor({ parent: { x: 2, z: 3 }, mourn: 5, mournAt: { x: 9, z: 9 } })).toEqual({ x: 2, z: 3 })
+    expect(juvenileAnchor({ parent: { x: 2, z: 3, dead: true }, mourn: 5, mournAt: { x: 9, z: 9 } }))
+      .toEqual({ x: 9, z: 9 }) // a dead parent is no anchor — the spot it fell is
+    expect(juvenileAnchor({ parent: { x: 2, z: 3, dead: true } })).toBeNull()
+  })
+
+  it('the shipped window outlasts a whole play cycle', () => {
+    // GAMBOL_IDLE_SECONDS is 12 s in the scene, so one cycle is bout + 12 s: the
+    // window must sit above it or the calf would gambol straight through its
+    // grief and the picture would say nothing had happened.
+    expect(balance.family.mourningSeconds).toBeGreaterThan(balance.family.gambolBoutSeconds + 12)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Intraspecies combat (design.md §19.17, point 264).
+// ---------------------------------------------------------------------------
+
+/** The animals the game actually renders (src/render/fauna.ts build functions
+ *  plus the §19.6 vulture) — the roster docs/intraspecies-combat-1890.md §2
+ *  maps row by row. A new rendered species must gain a row, or the mechanic
+ *  would silently answer "does it fight?" with `undefined`. */
+const RENDERED_FAUNA = [
+  'elephant', 'giraffe', 'zebra', 'wildebeest', 'antelope', 'warthog',
+  'flamingo', 'crocodile', 'plover', 'lion', 'cheetah', 'leopard', 'hyena', 'vulture',
+] as const
+
+describe('FIGHT_PROFILES — the researched per-species fight table (point 264)', () => {
+  it('carries a row for every rendered animal, so nothing answers "undefined"', () => {
+    for (const sp of RENDERED_FAUNA) expect(FIGHT_PROFILES[sp], sp).toBeDefined()
+  })
+
+  it('says the research says: the Tier C birds do not duel at all', () => {
+    // docs/intraspecies-combat-1890.md §3: flamingo/vulture/plover squabble over
+    // food and nest space — displays, not fights, and never lethal.
+    for (const sp of ['flamingo', 'vulture', 'plover']) {
+      expect(FIGHT_PROFILES[sp].fights, sp).toBe(false)
+      expect(FIGHT_PROFILES[sp].lethality, sp).toBe(0)
+      expect(speciesFightsOwnKind(sp), sp).toBe(false)
+    }
+  })
+
+  it('gives a fatal branch ONLY to the researched Tier A species', () => {
+    // §4 Tier A: elephant (musth), lion/leopard/cheetah (territorial), zebra
+    // (harem) — plus the giraffe's rare knock-down. Everything the research
+    // calls ritualised must resolve without a carcass.
+    for (const sp of ['wildebeest', 'antelope', 'warthog', 'crocodile', 'hyena']) {
+      expect(FIGHT_PROFILES[sp].fights, sp).toBe(true) // they DO fight …
+      expect(FIGHT_PROFILES[sp].lethality, sp).toBe(0) // … but nobody dies of it
+    }
+    for (const sp of ['elephant', 'lion', 'leopard', 'cheetah', 'zebra']) {
+      expect(FIGHT_PROFILES[sp].lethality, sp).toBeGreaterThan(0)
+    }
+    expect(FIGHT_PROFILES.giraffe.lethality).toBeGreaterThan(0)
+    // …and the giraffe's stays far below the Tier A register (§4: Tier B with a
+    // very rare injury, not a routine kill).
+    expect(FIGHT_PROFILES.giraffe.lethality).toBeLessThan(FIGHT_PROFILES.zebra.lethality / 2)
+  })
+
+  it('every driver is one the research names, and only a fighter has one', () => {
+    for (const [sp, p] of Object.entries(FIGHT_PROFILES)) {
+      if (p.fights) expect(['musth', 'dominance', 'territorial', 'resource'], sp).toContain(p.driver)
+      else expect(p.driver, sp).toBeUndefined()
+    }
+  })
+
+  it('FIGHTING_SPECIES is exactly the fighting rows that are also live', () => {
+    for (const [sp, p] of Object.entries(FIGHT_PROFILES)) {
+      expect(FIGHTING_SPECIES.includes(sp), sp).toBe(p.fights && p.live)
+    }
+    expect(FIGHTING_SPECIES.length).toBeGreaterThan(0)
+    // A non-live row is a researched species whose locomotion another system
+    // owns; it must never seed a disposition, however the roll falls.
+    for (const sp of ['elephant', 'crocodile', 'lion', 'cheetah', 'leopard', 'hyena']) {
+      expect(FIGHT_PROFILES[sp].live, sp).toBe(false)
+      expect(wantsToFight(sp, 0, 1), sp).toBe(false)
+    }
+  })
+
+  it('every live fighter is a species the ambient herds actually seed', () => {
+    // Two of one kind must be able to stand near each other, or the mechanic
+    // could never fire: each live fighter is in at least one region's prey pool.
+    for (const sp of FIGHTING_SPECIES) {
+      expect(Object.values(REGION_PREY).some((pool) => (pool as string[]).includes(sp)), sp).toBe(true)
+    }
+  })
+})
+
+describe('wantsToFight — the disposition (point 264)', () => {
+  it('scales the base rate by the species and never fires above it', () => {
+    const rate = 0.1
+    const zebra = rate * FIGHT_PROFILES.zebra.disposition
+    expect(wantsToFight('zebra', zebra - 1e-9, rate)).toBe(true)
+    expect(wantsToFight('zebra', zebra, rate)).toBe(false) // half-open band
+    const wildebeest = rate * FIGHT_PROFILES.wildebeest.disposition
+    expect(wildebeest).toBeGreaterThan(zebra) // the ritual sparrer quarrels more often
+    expect(wantsToFight('wildebeest', zebra + 1e-9, rate)).toBe(true)
+  })
+
+  it('a zero (or negative) rate switches the whole mechanic off', () => {
+    for (const roll of [0, 0.5, 0.999]) {
+      expect(wantsToFight('zebra', roll, 0)).toBe(false)
+      expect(wantsToFight('zebra', roll, -1)).toBe(false)
+    }
+  })
+
+  it('a non-fighting or unknown species never wants one, at any rate', () => {
+    expect(wantsToFight('plover', 0, 1)).toBe(false)
+    expect(wantsToFight('goat', 0, 1)).toBe(false) // village dressing, out of scope
+    expect(wantsToFight('hippopotamus', 0, 1)).toBe(false) // researched, not rendered
+  })
+})
+
+describe('pickFightOpponent — who takes on whom (point 264)', () => {
+  const self = { x: 0, z: 0 }
+  it('takes the NEAREST candidate inside the radius', () => {
+    const far = { x: 9, z: 0 }
+    const near = { x: 3, z: 0 }
+    expect(pickFightOpponent(self.x, self.z, [far, near], 20)).toBe(near)
+  })
+  it('refuses everything beyond the radius — including exactly at it', () => {
+    expect(pickFightOpponent(self.x, self.z, [{ x: 10, z: 0 }], 10)).toBeNull()
+    expect(pickFightOpponent(self.x, self.z, [{ x: 10, z: 0 }], 10.001)).not.toBeNull()
+  })
+  it('an empty (fully ineligible) field yields nobody, never a throw', () => {
+    expect(pickFightOpponent(self.x, self.z, [], 100)).toBeNull()
+  })
+})
+
+describe('fightApproach — the two interaction paths (point 264)', () => {
+  it('both want it → they CONVERGE; only one does → it HUNTS the other', () => {
+    expect(fightApproach(true, true)).toBe('converge')
+    expect(fightApproach(true, false)).toBe('hunt')
+  })
+})
+
+describe('fightApproachOutcome — catch, drive-off, deadline (point 264)', () => {
+  const limits = { contactRadius: 2, driveOffDistance: 20, approachSeconds: 25 }
+
+  it('contact starts the clash, in either path', () => {
+    expect(fightApproachOutcome('hunt', 2, 5, 1, limits)).toBe('clash')
+    expect(fightApproachOutcome('converge', 1.9, 5, 1, limits)).toBe('clash')
+  })
+
+  it('a HUNT breaks off once the quarry has cleared the patch — no kill', () => {
+    expect(fightApproachOutcome('hunt', 6, 19.9, 1, limits)).toBe('approach')
+    expect(fightApproachOutcome('hunt', 6, 20, 1, limits)).toBe('driveOff')
+  })
+
+  it('a CONVERGE never drives off on distance — both of them want it', () => {
+    expect(fightApproachOutcome('converge', 6, 100, 1, limits)).toBe('approach')
+  })
+
+  it('the hard deadline resolves BOTH paths (invariant I4)', () => {
+    expect(fightApproachOutcome('converge', 40, 0, 25, limits)).toBe('driveOff')
+    expect(fightApproachOutcome('hunt', 40, 0, 25, limits)).toBe('driveOff')
+    // …and a bout that has already met still clashes: contact outranks the clock,
+    // so an expiring deadline can never rob a fight of its resolution.
+    expect(fightApproachOutcome('hunt', 1, 0, 999, limits)).toBe('clash')
+  })
+
+  it('nothing between the endings: every state is one of the three', () => {
+    for (const mode of ['converge', 'hunt'] as const) {
+      for (const gap of [0, 2, 5, 21, 60]) {
+        for (const origin of [0, 19, 21]) {
+          for (const t of [0, 24, 26]) {
+            expect(['approach', 'clash', 'driveOff']).toContain(
+              fightApproachOutcome(mode, gap, origin, t, limits),
+            )
+          }
+        }
+      }
+    }
+  })
+})
+
+describe('fightResolve — who loses, and does it die (point 264)', () => {
+  const plain = { lethalityScale: 1 }
+
+  it('an even pair is a coin flip on the size-weighted roll', () => {
+    expect(fightResolve('zebra', 1, 1, 0.49, 1, plain).loser).toBe('a')
+    expect(fightResolve('zebra', 1, 1, 0.5, 1, plain).loser).toBe('b')
+  })
+
+  it('the heavier animal wins the more often', () => {
+    // p(a loses) = sizeB/(sizeA+sizeB): a 3-to-1 mismatch loses 'a' on 3 rolls in 4.
+    expect(fightResolve('zebra', 1, 3, 0.74, 1, plain).loser).toBe('a')
+    expect(fightResolve('zebra', 1, 3, 0.76, 1, plain).loser).toBe('b')
+    expect(fightResolve('zebra', 3, 1, 0.24, 1, plain).loser).toBe('a')
+    expect(fightResolve('zebra', 3, 1, 0.26, 1, plain).loser).toBe('b')
+  })
+
+  it('a zero/absurd size cannot divide by zero or invert the rule', () => {
+    expect(['a', 'b']).toContain(fightResolve('zebra', 0, 0, 0.5, 1, plain).loser)
+    expect(fightResolve('zebra', 0, 1, 0.99, 1, plain).loser).toBe('a') // the weightless one loses
+  })
+
+  it('the loss is fatal exactly on the species lethality band', () => {
+    const zebra = FIGHT_PROFILES.zebra.lethality
+    expect(fightResolve('zebra', 1, 1, 0, zebra - 1e-9, plain).lethal).toBe(true)
+    expect(fightResolve('zebra', 1, 1, 0, zebra, plain).lethal).toBe(false)
+  })
+
+  it('a ritual species never leaves a carcass, whatever the roll', () => {
+    for (const sp of ['wildebeest', 'antelope', 'warthog']) {
+      for (const roll of [0, 0.5, 0.999]) {
+        expect(fightResolve(sp, 1, 1, 0.5, roll, plain).lethal, sp).toBe(false)
+      }
+    }
+  })
+
+  it('an unknown species resolves peacefully rather than throwing', () => {
+    const r = fightResolve('hippopotamus', 1, 1, 0.5, 0, plain)
+    expect(r.lethal).toBe(false)
+    expect(['a', 'b']).toContain(r.loser)
+  })
+
+  it('the lethality scale calibrates every species at once', () => {
+    expect(fightResolve('zebra', 1, 1, 0, 0.99, { lethalityScale: 0 }).lethal).toBe(false)
+    expect(fightResolve('zebra', 1, 1, 0, 0.99, { lethalityScale: 10 }).lethal).toBe(true) // clamped to 1
+    expect(fightResolve('zebra', 1, 1, 0, 0.99, { lethalityScale: -5 }).lethal).toBe(false)
+  })
+
+  it('forceOutcome pins the roll (point 177) but may NOT rewrite the table', () => {
+    expect(fightResolve('zebra', 1, 1, 0, 0.999, { lethalityScale: 1, forceOutcome: 'death' }).lethal).toBe(true)
+    expect(fightResolve('zebra', 1, 1, 0, 0, { lethalityScale: 1, forceOutcome: 'submission' }).lethal).toBe(false)
+    // A species the research calls non-lethal stays non-lethal even when forced.
+    expect(fightResolve('antelope', 1, 1, 0, 0, { lethalityScale: 1, forceOutcome: 'death' }).lethal).toBe(false)
+    // …and so does any species once the scale is off.
+    expect(fightResolve('zebra', 1, 1, 0, 0, { lethalityScale: 0, forceOutcome: 'death' }).lethal).toBe(false)
+  })
+})
+
+describe('clashOver — the clash always ends (invariant I4, point 264)', () => {
+  it('resolves at the calibrated duration and not before', () => {
+    expect(clashOver(4.99, 5)).toBe(false)
+    expect(clashOver(5, 5)).toBe(true)
+    expect(clashOver(9, 5)).toBe(true)
+  })
+  it('a zero or negative duration resolves at once — never an endless clash', () => {
+    expect(clashOver(0, 0)).toBe(true)
+    expect(clashOver(0, -3)).toBe(true)
+  })
+})
+
+describe('clashPose — the clash READS as a fight from the bird\'s-eye (point 264)', () => {
+  // The staged bout the verification photographs: the pair on the x axis,
+  // aggressor at -g/2 facing +x, defender at +g/2 facing -x.
+  const GAP = 2.2
+  const TO_FOE_A = Math.PI / 2
+  const TO_FOE_B = -Math.PI / 2
+  const PHASE = 0.3
+  /** Both sides at one instant, at their rendered spots. */
+  const bout = (t: number, intensity = 1) => {
+    const a = clashPose(t, PHASE, true, TO_FOE_A, intensity)
+    const b = clashPose(t, PHASE, false, TO_FOE_B, intensity)
+    return {
+      a, b,
+      ax: -GAP / 2 + a.dx, az: a.dz,
+      bx: GAP / 2 + b.dx, bz: b.dz,
+    }
+  }
+  /** Smallest angle between two headings, folded to [0, pi/2] — a body and its
+   *  opposite lie on the SAME line, which is exactly what must not happen. */
+  const offLine = (u: number, v: number) => {
+    let d = Math.abs(((u - v) % Math.PI) + Math.PI) % Math.PI
+    return Math.min(d, Math.PI - d)
+  }
+  const SAMPLES = Array.from({ length: 240 }, (_, i) => i * 0.05)
+
+  it('at intensity 0 it collapses to two animals standing nose to nose', () => {
+    for (const t of SAMPLES) {
+      const { a, b } = bout(t, 0)
+      expect(a.yaw).toBeCloseTo(TO_FOE_A, 10)
+      expect(b.yaw).toBeCloseTo(TO_FOE_B, 10)
+      expect(a.dx).toBeCloseTo(0, 10)
+      expect(a.dz).toBeCloseTo(0, 10)
+      expect(a.pitch).toBeCloseTo(0, 10)
+      expect(a.lift).toBeCloseTo(0, 10)
+    }
+  })
+
+  it('the two bodies NEVER lie on one line — the wedge is the whole point', () => {
+    // The failure the picture caught: both aimed straight at each other is a
+    // single straight shape from above. Every sampled instant must be a wedge.
+    let worst = Math.PI
+    for (const t of SAMPLES) {
+      const { a, b } = bout(t)
+      worst = Math.min(worst, offLine(a.yaw, b.yaw))
+    }
+    expect(worst).toBeGreaterThan(0.5) // ~29 deg of wedge at the tightest moment
+  })
+
+  it('the pair WHEELS: the contact axis is not frozen on one bearing', () => {
+    const yaws = SAMPLES.map((t) => bout(t).a.yaw)
+    expect(Math.max(...yaws) - Math.min(...yaws)).toBeGreaterThan(0.5)
+  })
+
+  it('the two are in DIFFERENT postures — one rears while the other bores in low', () => {
+    // Two identical bodies read as scenery; the asymmetry is what reads as a
+    // fight. Somewhere in the cycle one must be nose-UP while the other is
+    // nose-DOWN, and they must swap.
+    const opposed = SAMPLES.filter((t) => {
+      const { a, b } = bout(t)
+      return a.pitch < -0.3 && b.pitch > 0.1
+    })
+    const swapped = SAMPLES.filter((t) => {
+      const { a, b } = bout(t)
+      return b.pitch < -0.3 && a.pitch > 0.1
+    })
+    expect(opposed.length).toBeGreaterThan(0)
+    expect(swapped.length).toBeGreaterThan(0)
+  })
+
+  it('the rear is HELD, so most instants catch the two in opposite postures', () => {
+    // A plain sine sits near zero most of the time, which left both bodies
+    // level at whatever moment the eye — or the shutter — caught them. The
+    // saturated rear must be at its top for the bulk of its half-cycle.
+    const opposed = SAMPLES.filter((t) => {
+      const { a, b } = bout(t)
+      return (a.pitch < -0.5 && b.pitch > 0.1) || (b.pitch < -0.5 && a.pitch > 0.1)
+    })
+    expect(opposed.length / SAMPLES.length).toBeGreaterThan(0.6)
+    // And no instant catches the pair merely STANDING: at every moment at
+    // least one body is well off level — reared, or head-down and boring in.
+    for (const t of SAMPLES) {
+      const { a, b } = bout(t)
+      expect(Math.max(Math.abs(a.pitch), Math.abs(b.pitch))).toBeGreaterThan(0.3)
+    }
+  })
+
+  it('a rearing body rises, so it stands on its hind legs instead of through the turf', () => {
+    const reared = SAMPLES.map((t) => bout(t).a).filter((p) => p.pitch < -0.5)
+    expect(reared.length).toBeGreaterThan(0)
+    for (const p of reared) expect(p.lift).toBeGreaterThan(0.25)
+    // A body that is level does not float.
+    for (const t of SAMPLES) {
+      const p = bout(t).a
+      if (Math.abs(p.pitch) < 0.02) expect(p.lift).toBeLessThan(0.02)
+    }
+  })
+
+  it('the shove travels through the pair: the two never gap open or pass through each other', () => {
+    for (const t of SAMPLES) {
+      const s = bout(t)
+      const gap = Math.hypot(s.ax - s.bx, s.az - s.bz)
+      // Bounded both ways — the contact holds without the bodies merging.
+      expect(gap).toBeGreaterThan(GAP * 0.6)
+      expect(gap).toBeLessThan(GAP * 1.6)
+    }
+  })
+
+  it('the offsets are BOUNDED — a render overlay cannot accumulate into a drift', () => {
+    for (const t of Array.from({ length: 4000 }, (_, i) => i * 0.37)) {
+      const { a } = bout(t)
+      expect(Math.hypot(a.dx, a.dz)).toBeLessThan(2)
+    }
+  })
+
+  it('is deterministic: the same instant always poses the same way', () => {
+    for (const t of [0, 1.7, 33.25]) {
+      expect(clashPose(t, PHASE, true, TO_FOE_A, 1)).toEqual(clashPose(t, PHASE, true, TO_FOE_A, 1))
+    }
+  })
+
+  it('a negative intensity is clamped to the standing pose, never inverted', () => {
+    const { a } = bout(3.3, -5)
+    expect(a.yaw).toBeCloseTo(TO_FOE_A, 10)
+    expect(a.pitch).toBeCloseTo(0, 10)
+  })
+})
+
+describe('fightPairBroken — nobody is left engaged with a body that is gone (point 264)', () => {
+  /** A live, mutually engaged pair. */
+  const pair = (): FightSide[] => {
+    const one: FightSide = {}
+    const two: FightSide = {}
+    one.fight = { foe: two }
+    two.fight = { foe: one }
+    return [one, two]
+  }
+
+  it('a live, mutual pair keeps fighting', () => {
+    const [one, two] = pair()
+    expect(fightPairBroken(one, two)).toBe(false)
+    expect(fightPairBroken(two, one)).toBe(false)
+  })
+
+  it('EITHER side dying breaks it — checked from BOTH sides', () => {
+    // The hole this exists to close: an aggressor trampled mid-bout stops being
+    // driven, and its quarry would have kept the drama flag, the fight pose and
+    // the no-flight for good.
+    const [one, two] = pair()
+    one.dead = true
+    expect(fightPairBroken(one, two)).toBe(true)
+    expect(fightPairBroken(two, one)).toBe(true)
+  })
+
+  it('a CULLED opponent breaks it too — a streamed-out body is not a rival', () => {
+    const [one, two] = pair()
+    two.gone = true
+    expect(fightPairBroken(one, two)).toBe(true)
+    expect(fightPairBroken(two, one)).toBe(true)
+  })
+
+  it('a HALF-engaged pair breaks it: the other side moved on', () => {
+    const [one, two] = pair()
+    two.fight = undefined // released by its own ending
+    expect(fightPairBroken(one, two)).toBe(true)
+    // …and re-aimed at a third animal, which is not this bout either.
+    const third = {}
+    two.fight = { foe: third }
+    expect(fightPairBroken(one, two)).toBe(true)
+  })
+})
+
+describe('the fight is a DRAMA like any other (points 197/252/264)', () => {
+  it('a fighter is claimed: no fresh-victim scan may take it', () => {
+    const base = { isLionVictim: false }
+    expect(claimedByAnotherDrama(base)).toBe(false)
+    expect(claimedByAnotherDrama({ ...base, fight: { mode: 'clash' } })).toBe(true)
+  })
+  it('a fighter never breaks off to shy from the traveller', () => {
+    expect(isInDrama({})).toBe(false)
+    expect(isInDrama({ fighting: true })).toBe(true)
+  })
+})
+
+describe('the shipped fight balance is internally consistent (point 264)', () => {
+  const fb = balance.fight
+  it('the distances nest: contact < drive-off < the search that finds a rival', () => {
+    expect(fb.contactRadius).toBeLessThan(fb.driveOffDistance)
+    expect(fb.driveOffDistance).toBeLessThan(fb.seekRadius)
+  })
+  it('the quarry is slower than its pursuer, so a catch is reachable at all', () => {
+    expect(fb.quarryFleeFactor).toBeGreaterThan(0)
+    expect(fb.quarryFleeFactor).toBeLessThan(1)
+  })
+  it('a fight is approached at a charge but never outruns a real hunt', () => {
+    expect(fb.approachBurst).toBeGreaterThan(1)
+    expect(PREY_WALK_SPEED * fb.approachBurst).toBeLessThan(4.6) // HUNT_PREY_SPEED
+  })
+  it('both clocks are finite, so every bout resolves', () => {
+    expect(fb.approachSeconds).toBeGreaterThan(0)
+    expect(fb.clashSeconds).toBeGreaterThan(0)
+    expect(Number.isFinite(fb.approachSeconds + fb.clashSeconds)).toBe(true)
+  })
+  it('the disposition stays RARE — a fight is an event, not the herd\'s state', () => {
+    for (const sp of FIGHTING_SPECIES) {
+      expect(fb.dispositionRate * FIGHT_PROFILES[sp].disposition, sp).toBeLessThan(0.05)
+    }
+    expect(fb.dispositionInterval).toBeGreaterThan(0)
+    expect(fb.cooldownSeconds).toBeGreaterThan(fb.approachSeconds) // a settled pair does not re-engage at once
+  })
+  it('ships unforced: the test-only outcome pin is never set in play', () => {
+    expect(fb.forceOutcome).toBeUndefined()
+  })
+})

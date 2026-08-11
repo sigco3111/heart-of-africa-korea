@@ -1,0 +1,124 @@
+import { Suspense, useEffect } from 'react'
+import { Canvas, extend, useThree, type ThreeToJSXElements } from '@react-three/fiber'
+import * as THREE from 'three/webgpu'
+import { useGame } from './state/store'
+import { useUi, effectiveDprCap } from './state/ui'
+import { useLocale } from './i18n'
+import { speechAvailable, warmupSpeech } from './journal/speech'
+import { TravelScene } from './scenes/travel/TravelScene'
+import { PlaceScene } from './scenes/place/PlaceScene'
+import { Effects } from './render/Effects'
+import { setRenderContext } from './render/renderContext'
+import { enableAsyncPipelineCompile, type PipelineBackend } from './render/asyncPipelines'
+import { Hud } from './ui/Hud'
+import { AmbienceController } from './ui/AmbienceController'
+
+declare module '@react-three/fiber' {
+  interface ThreeElements extends ThreeToJSXElements<typeof THREE> {}
+}
+
+// Register the WebGPU build's classes for JSX elements (R3F v9 pattern).
+extend(THREE as unknown as Parameters<typeof extend>[0])
+
+/**
+ * Publishes the live render handles (renderer, scene, camera, frame clock) to
+ * the module registry, so non-React code can reach them — the in-game
+ * benchmark (design.md §21.1, F8) reads the renderer's counters and the scene
+ * graph and pins the frame clock to a fixed timestep. Renders nothing.
+ */
+function RenderContextBridge() {
+  const gl = useThree((s) => s.gl)
+  const scene = useThree((s) => s.scene)
+  const camera = useThree((s) => s.camera)
+  const clock = useThree((s) => s.clock)
+  useEffect(() => {
+    setRenderContext({ gl: gl as unknown as THREE.WebGPURenderer, scene, camera, clock })
+    return () => setRenderContext(null)
+  }, [gl, scene, camera, clock])
+  return null
+}
+
+export default function App() {
+  const mode = useGame((s) => s.mode)
+  // The touch layer (point 84) tightens the HUD and honours the safe-area insets.
+  const touchActive = useUi((s) => s.touchActive)
+  // Graphics level (design.md §21, F9 / point 276 part B): the low preset caps
+  // the device pixel ratio to 1.0 — the biggest fill-rate lever on the user's
+  // real hardware (~35 % GPU, point 277). null keeps R3F's native dpr (medium/
+  // high). R3F re-applies the ratio when this prop changes.
+  const dprCap = useUi(effectiveDprCap)
+  // Pre-warm the read-aloud model shortly after mount (point 117) so the first
+  // narration only synthesizes rather than cold-loading the model, and so the
+  // WebGPU cold-load's one-time ~15 s GPU stall (user-accepted, reversing point
+  // 100) happens up front at game start rather than at the first narration.
+  // Deferred a moment so the scene is visible first, and only when the current
+  // language actually has a voice (English).
+  // `__ttsDeferWarmup` (dev only) holds the pre-warm back so the headless
+  // cold-load liveness probe provably SPANS the model load instead of measuring
+  // a window the warm-up already finished behind its back (point 304); the
+  // first narration then does the cold load itself.
+  useEffect(() => {
+    if (!speechAvailable(useLocale.getState().lang)) return
+    if (import.meta.env.DEV && (window as unknown as Record<string, unknown>).__ttsDeferWarmup) return
+    const t = setTimeout(() => warmupSpeech(), 1200)
+    return () => clearTimeout(t)
+  }, [])
+  return (
+    <div className={touchActive ? 'game-root touch-active' : 'game-root'}>
+      <Canvas
+        camera={{ fov: 50, near: 0.1, far: 2000, position: [0, 40, 20] }}
+        dpr={dprCap ?? undefined}
+        shadows
+        gl={async (props) => {
+          // WebGPU primary; the renderer falls back to WebGL 2 automatically
+          // when WebGPU is unavailable (CLAUDE.md §3).
+          const renderer = new THREE.WebGPURenderer({
+            ...(props as ConstructorParameters<typeof THREE.WebGPURenderer>[0]),
+            antialias: true,
+          })
+          await renderer.init()
+          // Surface the automatic WebGL 2 fallback to the player (CLAUDE.md §3).
+          const backend = (renderer as unknown as { backend?: { isWebGPUBackend?: boolean } }).backend
+          useUi.getState().setWebglFallback(backend?.isWebGPUBackend !== true)
+          // Shader pipelines compile OFF the critical path (point 337). Without
+          // this the startup frame waits out ~62 program links and the picture
+          // stands still for a quarter of a minute; see render/asyncPipelines.ts
+          // for the measurement and the mechanism. Armed before the first frame
+          // — the very frame that used to pay for the whole set.
+          // `__asyncPipelinesOff` (dev only) restores the old blocking path, so
+          // the startup suite can prove its budget gate still bites.
+          const pipelines =
+            import.meta.env.DEV && (window as unknown as Record<string, unknown>).__asyncPipelinesOff
+              ? null
+              : enableAsyncPipelineCompile(backend as unknown as PipelineBackend | undefined)
+          // Dev hook for the headless verification (CLAUDE.md §7.2): the
+          // pipeline-rebuild leak gate reads renderer.info.memory, the startup
+          // suite reads how much of the program set is still compiling.
+          if (import.meta.env.DEV) {
+            ;(window as unknown as Record<string, unknown>).__renderer = renderer
+            ;(window as unknown as Record<string, unknown>).__shaderPipelines = () => pipelines?.state() ?? null
+            // GPU-resource leak invariant (point 295): armed here, before the
+            // first frame, so every scene switch, detail-level change and
+            // effect toggle of the session is watched. Imported dynamically so
+            // the watch never enters the shipped bundle.
+            void import('./render/renderLeak').then((m) => m.armRenderLeakWatch())
+          }
+          // Filmic look: soft shadows + ACES tone mapping.
+          renderer.shadowMap.enabled = true
+          renderer.shadowMap.type = THREE.PCFSoftShadowMap
+          renderer.toneMapping = THREE.ACESFilmicToneMapping
+          renderer.toneMappingExposure = 1.05
+          return renderer
+        }}
+      >
+        <RenderContextBridge />
+        <Suspense fallback={null}>
+          {mode === 'travel' ? <TravelScene /> : <PlaceScene />}
+          <Effects />
+        </Suspense>
+      </Canvas>
+      <Hud />
+      <AmbienceController />
+    </div>
+  )
+}

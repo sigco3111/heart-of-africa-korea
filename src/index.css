@@ -1,0 +1,1533 @@
+/* Global game styles: full-screen canvas plus DOM HUD overlays. */
+
+:root {
+  --hud-bg: rgba(24, 18, 10, 0.82);
+  --hud-border: rgba(212, 180, 120, 0.45);
+  --hud-text: #f0e6d2;
+  --hud-accent: #e8c877;
+  --paper: #f3e7c9;
+  --paper-ink: #3a2c1a;
+  font-family: Georgia, 'Times New Roman', serif;
+  color: var(--hud-text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0d0b08;
+  /* The GUI is a game surface, not a document — no text selection anywhere. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Editable controls (e.g. the debug-menu number fields) keep normal selection. */
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.game-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* Boot screen while the geodata (DEM) loads. */
+.boot-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 20px;
+  color: var(--hud-accent);
+  letter-spacing: 0.5px;
+}
+
+.game-root canvas {
+  display: block;
+}
+
+/* --- Status bar ---------------------------------------------------------- */
+
+.status-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 14px;
+  background: var(--hud-bg);
+  border-bottom: 1px solid var(--hud-border);
+  font-size: 15px;
+  pointer-events: none;
+}
+
+/* Left zone: the stats, each led by a narrow engraved symbol (the localized
+   word lives in the title/aria attributes). */
+.status-stats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  white-space: nowrap;
+}
+
+.status-bar .stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stat-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--hud-accent);
+  flex: none;
+}
+
+/* Centre zone: transient status hints (movement penalty etc.), pinned to the
+   BAR's true centre (the flex zones are asymmetric). */
+.status-hints {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 42%;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.status-hints .movement-penalty {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Right zone: the health bar + affliction badges INSIDE the bar, where the
+   journal panel can never cover them (design.md §17.1). margin-left: auto
+   pushes the zone to the bar's right edge — the centred hints are absolutely
+   positioned and take no flex space, so without it the health bar would sit
+   directly after the stats (user-reported layout bug). */
+.status-health {
+  display: flex;
+  align-items: center;
+  flex: none;
+  margin-left: auto;
+}
+
+/* --- Inventory bar -------------------------------------------------------- */
+
+/* Bottom-right row: camp/journal buttons with the health bar at the far right. */
+.hud-bottom-right {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Health status inside the status bar's right end (design.md §17.1): the
+   affliction badges sit to the left of the health bar. */
+.health-status {
+  height: 22px; /* fixed, so adding taller affliction badges never nudges the bar */
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.affliction-badge {
+  padding: 2px 8px;
+  background: var(--hud-bg);
+  border: 1px solid #a3502e;
+  border-left: 4px solid #d0562e;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #f0b48a;
+  white-space: nowrap;
+  text-transform: capitalize;
+}
+
+.health-bar {
+  width: 150px;
+  height: 14px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--hud-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.health-bar-fill {
+  height: 100%;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+/* Below a third the bar blinks for attention (design.md §17.1). */
+.health-bar.health-low {
+  animation: health-blink 0.7s steps(1, end) infinite;
+}
+
+@keyframes health-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.inventory-bar {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-width: 60vw;
+}
+
+.inventory-bar button,
+.hud-button {
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-border);
+  color: var(--hud-text);
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Orientation markers over the enterable buildings (design.md §17). */
+.building-highlight {
+  color: var(--hud-accent);
+  font-size: 22px;
+  text-shadow: 0 0 6px rgba(224, 176, 80, 0.9);
+  animation: highlight-bob 1.1s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes highlight-bob {
+  from { transform: translateY(-4px); }
+  to { transform: translateY(4px); }
+}
+
+/* Tabular load menu (design.md §18): one row per port visit. */
+.load-menu {
+  border-collapse: collapse;
+  margin: 12px auto;
+  font-size: 15px;
+}
+
+.load-menu th,
+.load-menu td {
+  padding: 6px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--hud-border);
+}
+
+.load-menu th {
+  color: var(--hud-accent);
+  font-weight: normal;
+  font-style: italic;
+}
+
+/* The robbery action (design.md §12) reads as a dangerous, ruinous step. */
+.hud-button.danger {
+  border-color: #8c2f22;
+  color: #d4715f;
+}
+
+/* Robbery safety confirmation (design.md §12). */
+.rob-confirm {
+  margin-top: 8px;
+  border-top: 1px solid var(--hud-border);
+  padding-top: 8px;
+}
+.rob-confirm .danger-text {
+  color: #e0715f;
+}
+
+.inventory-bar button:hover,
+.hud-button:hover {
+  border-color: var(--hud-accent);
+}
+
+/* The camp/journal toggles are laid out by their flex row (.hud-bottom-right). */
+
+/* Passive inventory items and the canteen reading are labels, not buttons. */
+.inventory-bar .inv-item {
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-border);
+  color: var(--hud-text);
+  font-size: 14px;
+  padding: 6px 10px;
+  border-radius: 4px;
+}
+
+/* Canteen fill colour cue (design.md §6): yellow and blinking under a third,
+   red under 5 %, still blinking when empty. */
+.inventory-bar .inv-item.canteen.canteen-low {
+  border-color: #d8b13a;
+  color: #e7c752;
+}
+.inventory-bar .inv-item.canteen.canteen-crit {
+  border-color: #c0392b;
+  color: #e0715f;
+}
+.inventory-bar .inv-item.canteen.canteen-empty {
+  border-color: #c0392b;
+  color: #e0715f;
+}
+.inventory-bar .inv-item.canteen.canteen-blink {
+  animation: canteen-blink 0.7s steps(1, end) infinite;
+}
+
+@keyframes canteen-blink {
+  50% {
+    border-color: var(--hud-border);
+    color: var(--hud-text);
+  }
+}
+
+/* Item "in use" glow: a carried item currently taking effect (canoe on water,
+   machete in jungle, rope on a mountain, medicine while afflicted) lights up in
+   the inventory bar (both passive labels and clickable buttons). */
+.inventory-bar .inv-item.inv-active,
+.inventory-bar button.inv-active {
+  border-color: #6fc36a;
+  color: #b6efb0;
+  box-shadow: 0 0 8px rgba(111, 195, 106, 0.7);
+  animation: inv-active-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes inv-active-pulse {
+  50% {
+    box-shadow: 0 0 3px rgba(111, 195, 106, 0.35);
+  }
+}
+
+/* --- Self-drawing exploration map (design.md §19) ------------------------- */
+
+.map-overlay {
+  position: absolute;
+  left: 12px;
+  /* Bottom-left, anchored ABOVE the inventory bar whatever its height (point
+     163): the HUD publishes the live bar height as --inv-bar-height, so the map
+     rides bar-bottom (12px) + bar height + a 12px gap and clears a wrapped
+     two-row loadout instead of covering its second row. Falls back to the
+     single-row 32px (→ 56px total, the journal panel's gap, design.md §17.4)
+     when the bar is absent. */
+  bottom: calc(var(--inv-bar-height, 32px) + 24px);
+  transform: rotate(-0.4deg);
+  background: var(--paper);
+  color: var(--paper-ink);
+  border: 1px solid #8a6f45;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
+  padding: 10px 14px 14px;
+  /* Capped so the plate can never reach the bottom-right camp/map/journal
+     buttons, even on small landscape screens; the plate scales to fit. */
+  max-width: min(560px, 52vw);
+  max-height: calc(100vh - 150px);
+  overflow: auto;
+}
+
+/* The plate scales inside its capped box; the player marker overlays it. */
+.map-canvas-wrap {
+  position: relative;
+  line-height: 0;
+}
+.map-overlay canvas,
+.map-overlay svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* "You are here" (design.md §19.11): an ink dot with a fine pulsing ring, in
+   both the atlas (a div over the canvas) and the town plan (an SVG group).
+   pointer-events only on the shared class — position/transform belong to the
+   DOM marker ONLY: on the SVG <g> a CSS transform would override its
+   `transform` attribute and strand the marker in the plate corner (point 109). */
+.map-player {
+  pointer-events: none;
+}
+.map-player.map-player-dom {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+.map-player.map-player-dom::before,
+.map-player.map-player-dom::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+.map-player.map-player-dom::before {
+  width: 10px;
+  height: 10px;
+  background: #8c2f22;
+  /* White halo so the dot reads over the busy engraved plate (point 109). */
+  box-shadow: 0 0 0 2px rgba(250, 245, 230, 0.95), 0 0 4px 3px rgba(0, 0, 0, 0.35);
+}
+.map-player.map-player-dom::after {
+  width: 10px;
+  height: 10px;
+  border: 2px solid #8c2f22;
+  animation: map-player-pulse 1.8s ease-out infinite;
+}
+@keyframes map-player-pulse {
+  from { width: 10px; height: 10px; opacity: 0.85; }
+  to { width: 34px; height: 34px; opacity: 0; }
+}
+/* A pale halo circle sits behind the town-plan dot for the same contrast. */
+.map-player-halo { fill: rgba(250, 245, 230, 0.95); }
+.map-player-dot { fill: #8c2f22; stroke: rgba(250, 245, 230, 0.95); stroke-width: 1; }
+.map-player-ring {
+  fill: none;
+  stroke: #8c2f22;
+  stroke-width: 1.6;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: map-ring-pulse 1.8s ease-out infinite;
+}
+@keyframes map-ring-pulse {
+  from { transform: scale(0.4); opacity: 0.85; }
+  to { transform: scale(2.6); opacity: 0; }
+}
+
+.map-overlay header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #c9b488;
+  margin-bottom: 8px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.map-overlay .map-progress {
+  font-size: 13px;
+  font-weight: 400;
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.map-overlay button {
+  background: none;
+  border: 1px solid #8a6f45;
+  color: var(--paper-ink);
+  font: inherit;
+  font-size: 13px;
+  padding: 2px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.map-overlay canvas {
+  display: block;
+  /* Faint aged-paper texture under the ink. */
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(140, 110, 60, 0.08), transparent 60%),
+    radial-gradient(ellipse at 75% 80%, rgba(140, 110, 60, 0.1), transparent 55%);
+}
+
+/* Settlement plan (point 79): the same worn-paper look as the atlas plate,
+   with engraved-style labels on the functional buildings. */
+.map-place-plan svg {
+  display: block;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(140, 110, 60, 0.08), transparent 60%),
+    radial-gradient(ellipse at 75% 80%, rgba(140, 110, 60, 0.1), transparent 55%);
+}
+
+.map-place-plan .plan-building-label {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 12px;
+  paint-order: stroke;
+  stroke: #eadfc2;
+  stroke-width: 3px;
+}
+
+/* --- Prompt + toast ------------------------------------------------------ */
+
+.prompt {
+  position: absolute;
+  bottom: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-accent);
+  padding: 8px 18px;
+  border-radius: 6px;
+  font-size: 16px;
+  /* Above the touch overlay (z-index 5) so a tappable prompt is never swallowed
+     by the look/steer surface that spans the right screen half (point 84). */
+  z-index: 6;
+}
+
+/* The settlement enter hint ("Space to enter <name>", design.md §2.3) sits a
+   little BELOW the screen centre instead of at the bottom bar: close enough to
+   the action to be read at a glance, far enough from the centre that it never
+   covers the traveller's figure. 60 % of the viewport height puts the box's
+   centre in the marked band. Only this variant moves — the ordinary interaction
+   prompts (camp, doors, elder) keep their bottom anchor, as do the centred
+   status-bar hints of §17.1. */
+.prompt.prompt-enter {
+  top: 60%;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+
+/* On touch the prompt is a tappable button; keep it visually identical to the
+   plain label but with a comfortable tap target (design.md §17.5, point 84). */
+.prompt-tappable {
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+/* Touch controls (design.md §17.5, point 84): a transparent full-screen layer;
+   only the stick and the look surface capture pointer events, so the rest of
+   the HUD stays clickable. Mounted only while ui.touchActive. */
+.touch-controls {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+.touch-stick {
+  position: absolute;
+  left: calc(24px + env(safe-area-inset-left, 0px));
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  width: 128px;
+  height: 128px;
+  border-radius: 50%;
+  background: rgba(20, 24, 28, 0.28);
+  border: 1px solid var(--hud-accent);
+  pointer-events: auto;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.touch-stick-knob {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(210, 220, 230, 0.4);
+  border: 1px solid var(--hud-accent);
+  will-change: transform;
+}
+/* The right screen half steers the look and pinches to zoom. */
+.touch-look {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 50%;
+  height: 100%;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+/* With the touch layer the HUD honours the notch/safe-area insets and tightens
+   on short viewports so nothing is clipped (design.md §17.5, point 84). */
+.game-root.touch-active .status-bar {
+  padding-left: calc(10px + env(safe-area-inset-left, 0px));
+  padding-right: calc(10px + env(safe-area-inset-right, 0px));
+}
+.game-root.touch-active .hud-bottom-right {
+  right: calc(12px + env(safe-area-inset-right, 0px));
+}
+@media (max-height: 700px) {
+  .game-root.touch-active .hud-button {
+    padding: 5px 9px;
+    font-size: 13px;
+  }
+  .game-root.touch-active .inventory-bar {
+    transform: scale(0.85);
+    transform-origin: bottom left;
+  }
+}
+
+/* Reason for an active movement slowdown (design.md §11/§17): a right-aligned
+   item inside the status bar (margin-left:auto pushes it to the bar's right
+   end), not a panel floating over the scene. */
+.status-bar .movement-penalty {
+  margin-left: auto;
+  align-self: center;
+  border: 1px solid #a67c2e;
+  border-left: 4px solid #d0912e;
+  padding: 3px 10px;
+  border-radius: 5px;
+  font-size: 14px;
+  color: var(--hud-accent);
+}
+
+/* Frame counter, top left below the status bar (the journal panel occupies
+   the right edge). */
+.fps-counter {
+  position: absolute;
+  top: 46px;
+  left: 12px;
+  padding: 2px 8px;
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-border);
+  border-radius: 4px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* Dismissible notice when the renderer fell back to WebGL 2. */
+.renderer-warning {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--hud-bg);
+  border: 1px solid #a67c2e;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  max-width: 80vw;
+}
+
+.renderer-warning button {
+  background: none;
+  border: 1px solid var(--hud-border);
+  color: var(--hud-text);
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.renderer-warning button:hover {
+  border-color: var(--hud-accent);
+}
+
+.toast {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-border);
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  max-width: 70vw;
+  text-align: center;
+}
+
+/* --- Journal ------------------------------------------------------------- */
+
+.journal {
+  position: absolute;
+  top: 48px;
+  /* Small gap to the right screen edge (design.md §17.4). */
+  right: 12px;
+  /* Stop above the camp/journal buttons (bottom: 12px, ~30px tall) with a small
+     gap so the panel never covers them (design.md §16/§17). */
+  bottom: 56px;
+  width: min(420px, 90vw);
+  background: var(--paper);
+  color: var(--paper-ink);
+  border-left: 3px solid #8a6f45;
+  box-shadow: -6px 0 18px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+}
+
+.journal header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid #c9b488;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.journal .entries {
+  overflow-y: auto;
+  padding: 12px 18px;
+  flex: 1;
+}
+
+/* The journal's two tabs (point 579): the diary and the overheard utterances,
+   so reading either needs no scrolling past the other. The emphasis is carried
+   by weight and the raised paper of the active tab, never by capitals. */
+.journal .journal-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 16px 0;
+  border-bottom: 1px solid #c9b488;
+}
+
+.journal .journal-tabs .journal-tab {
+  padding: 3px 12px;
+  font-size: 13px;
+  letter-spacing: 0.4px;
+  border-bottom-color: transparent;
+  border-radius: 4px 4px 0 0;
+  margin-bottom: -1px;
+  opacity: 0.65;
+}
+
+.journal .journal-tabs .journal-tab:hover {
+  opacity: 0.85;
+}
+
+.journal .journal-tabs .journal-tab.active {
+  background: rgba(160, 120, 40, 0.16);
+  font-weight: 600;
+  opacity: 1;
+}
+
+.journal .entry {
+  margin-bottom: 18px;
+  /* Anchor for the blood traces of design.md §16. */
+  position: relative;
+}
+
+.journal .entry .date {
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.journal .entry h4 {
+  margin: 2px 0 4px;
+  font-size: 16px;
+}
+
+.journal .entry p {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.55;
+  /* Handwritten presentation (design.md §16). */
+  font-family: 'Segoe Script', 'Bradley Hand', 'Comic Sans MS', cursive;
+}
+
+/* Handwriting animation (design.md §16): the hand writing the entry. */
+.journal .entry.writing {
+  cursor: pointer;
+}
+
+.writing-hand {
+  display: inline-block;
+  vertical-align: -0.55em;
+  margin-left: 1px;
+  transform-origin: 15% 90%;
+  animation: hand-wiggle 0.32s ease-in-out infinite alternate;
+  filter: drop-shadow(0 1px 1px rgba(40, 25, 10, 0.35));
+}
+
+.writing-hand .hand-skin {
+  fill: #d9a86f;
+  stroke: #a9794a;
+  stroke-width: 0.6;
+}
+.writing-hand .pen-shaft {
+  stroke: #3a2b1a;
+  stroke-width: 2.6;
+}
+.writing-hand .pen-nib {
+  stroke: #14100a;
+  stroke-width: 2.6;
+}
+.writing-hand .pen-ink {
+  fill: #2a1c33;
+}
+
+/* Lightly wounded hand: darker, scuffed skin (design.md §16). */
+.writing-hand.marked .hand-skin {
+  fill: #b97f52;
+  stroke: #8a5a30;
+}
+
+/* Severely wounded: a bloody hand writes the entry (design.md §16). */
+.writing-hand.bloody .hand-skin {
+  fill: #9e4234;
+  stroke: #6f241a;
+}
+.writing-hand.bloody .pen-ink {
+  fill: #6f1710;
+}
+
+@keyframes hand-wiggle {
+  from { transform: rotate(-3deg) translate(-0.5px, 0); }
+  to { transform: rotate(2.5deg) translate(0.5px, 1px); }
+}
+
+/* Blood traces on entries written by a wounded hand (design.md §16): irregular
+   spattered droplets with a run-off drip and satellite specks, not tidy dots. */
+.blood-marks .blood-drop {
+  position: absolute;
+  pointer-events: none;
+  transform: rotate(var(--rot, 0deg));
+  /* Organic, slightly teardrop outline. */
+  border-radius: 58% 42% 47% 53% / 63% 59% 41% 37%;
+  background: radial-gradient(ellipse at 40% 32%, #7c1c11 0%, #5c1109 55%, #390a05 100%);
+  opacity: 0.82;
+  /* Satellite specks flung from the drop. */
+  box-shadow:
+    0.55em 0.28em 0 -0.34em #5c1109,
+    -0.4em 0.5em 0 -0.4em #6a140b,
+    0.28em 0.62em 0 -0.42em #4a0d06;
+}
+/* A thin run-off drip trailing downward. */
+.blood-marks .blood-drop::after {
+  content: '';
+  position: absolute;
+  left: 44%;
+  top: 62%;
+  width: 20%;
+  height: 130%;
+  border-radius: 40% 40% 55% 55%;
+  background: linear-gradient(to bottom, #5c1109 0%, rgba(70, 15, 8, 0.5) 55%, transparent 100%);
+}
+
+.blood-marks.severe .blood-drop {
+  opacity: 0.92;
+  background: radial-gradient(ellipse at 40% 32%, #8f1f12 0%, #6a130a 55%, #430a05 100%);
+}
+
+/* Hand-sketch illustrations beside entry text (design.md §19). */
+.journal .entry .sketch {
+  float: right;
+  margin: 2px 0 4px 10px;
+  opacity: 0.8;
+  transform: rotate(-2deg);
+}
+
+.journal .entry.hint {
+  background: rgba(160, 120, 40, 0.12);
+  border-left: 3px solid #a07828;
+  padding: 6px 10px;
+}
+
+.journal button {
+  background: none;
+  border: 1px solid #8a6f45;
+  color: var(--paper-ink);
+  font: inherit;
+  padding: 2px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Read-aloud control per entry (design.md §15, English only for now). */
+.journal .entry .speak {
+  margin-left: 8px;
+  padding: 0 7px;
+  font-size: 11px;
+  line-height: 1.6;
+  vertical-align: 2px;
+  opacity: 0.75;
+}
+
+.journal .entry .speak:hover {
+  opacity: 1;
+}
+
+.journal .entry .voice-loading {
+  font-size: 12px;
+  font-style: italic;
+  opacity: 0.65;
+  margin-bottom: 2px;
+}
+
+/* Speech observations (design.md §13.4): the journal's second tab (point 579)
+   — a ruled-off appendix of the book, filling the panel while it is in front so
+   a long chronicle never pushes the heard utterances out of reach. */
+.journal .observations {
+  padding: 10px 18px 12px;
+  overflow-y: auto;
+  flex: 1;
+  background: rgba(160, 120, 40, 0.07);
+}
+
+.journal .observations-hint {
+  margin: 2px 0 8px;
+  font-size: 12px;
+  font-style: italic;
+  opacity: 0.65;
+}
+
+.journal .observation {
+  margin-bottom: 10px;
+}
+
+.journal .observation .utterance {
+  font-family: 'Courier New', monospace;
+  font-size: 15px;
+  letter-spacing: 1px;
+}
+
+/* Day and village of the first hearing (point 579): set quietly, not in
+   capitals — the styling carries the emphasis. */
+.journal .observation .first-heard {
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  opacity: 0.6;
+}
+
+.journal .observation .hypothesis {
+  width: 100%;
+  margin-top: 3px;
+  padding: 3px 6px;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.35);
+  border: 1px solid #b39a6c;
+  border-radius: 3px;
+  color: var(--paper-ink);
+  font: 14px 'Segoe Script', 'Bradley Hand', 'Comic Sans MS', cursive;
+}
+
+.journal .observation .hypothesis:focus {
+  outline: none;
+  border-color: #8a6f45;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.journal .reopen-drum-message {
+  display: block;
+  margin: 0 0 10px;
+  font-size: 12px;
+}
+
+/* Concepts on paper: the player's own reading above its syllables, wrapping
+   rather than scrolling sideways so a whole phrase stays readable at once. Used
+   by the chief's drum message (design.md §13.4, point 486) and by his spoken
+   acknowledgment of the artefact (point 487) — one look for every phrase the
+   game shows in the village's own tongue. */
+.dialog.drum-message {
+  max-width: 640px;
+}
+
+/* The guess at what one speaker just said (point 588): a single utterance most
+   of the time, so the box stays narrow. */
+.dialog.speech-guess {
+  max-width: 460px;
+}
+
+/* The chief's answer inside the audience (point 487). */
+.dialog .chief-acknowledge {
+  margin: 6px 0 2px;
+}
+
+.dialog .drum-concepts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 14px;
+  margin: 12px 0 4px;
+  padding: 0;
+  list-style: none;
+}
+
+.dialog .drum-concept {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 92px;
+}
+
+/* The reading sits ABOVE its syllables. On the drum message it is a button and
+   editable; in the chief's spoken answer it is plain text, so only the button
+   form reads as clickable. */
+.dialog .drum-concept .reading {
+  max-width: 130px;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px dashed #b39a6c;
+  border-radius: 3px;
+  color: inherit;
+  font: 14px 'Segoe Script', 'Bradley Hand', 'Comic Sans MS', cursive;
+  overflow-wrap: anywhere;
+}
+
+.dialog .drum-concept button.reading {
+  cursor: pointer;
+}
+
+.dialog .drum-concept button.reading:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* A concept the player has not read yet stands out as the open question it is. */
+.dialog .drum-concept .reading.unread {
+  opacity: 0.65;
+  letter-spacing: 2px;
+}
+
+.dialog .drum-concept .hypothesis {
+  width: 130px;
+  padding: 2px 6px;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.35);
+  border: 1px solid #b39a6c;
+  border-radius: 3px;
+  color: var(--paper-ink);
+  font: 14px 'Segoe Script', 'Bradley Hand', 'Comic Sans MS', cursive;
+}
+
+.dialog .drum-concept .utterance {
+  margin-top: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+
+/* Low and high told apart at a glance — the large drum reads heavy, the small
+   one light, exactly as they sound. */
+.dialog .drum-concept .utterance .low {
+  opacity: 0.95;
+}
+
+.dialog .drum-concept .utterance .high {
+  font-weight: 700;
+  color: #d8b45a;
+}
+
+.dialog .drum-concept .utterance span + span::before {
+  content: '-';
+  font-weight: 400;
+  color: inherit;
+  opacity: 0.5;
+}
+
+/* Region name beside the border lines (bird's-eye view, design.md §3). */
+.region-label {
+  font: italic 13px Georgia, serif;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: #2f2417;
+  opacity: 0.65;
+  text-shadow: 0 0 4px rgba(240, 228, 200, 0.7);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* --- Dialogs ------------------------------------------------------------- */
+
+/* HUD panels and modals must sit above the in-scene drei <Html> labels, which
+   get a computed z-index up to ~16.7M (drei's default zIndexRange max). Panels
+   sit above the labels; modal dialogs and full-screen overlays sit above the
+   panels. */
+.journal,
+.map-overlay,
+.debug-menu {
+  z-index: 16778000;
+}
+
+.dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 16779000;
+}
+
+.dialog {
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-border);
+  border-radius: 8px;
+  padding: 18px 22px;
+  width: min(460px, 92vw);
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.dialog h3 {
+  margin: 0 0 6px;
+  color: var(--hud-accent);
+}
+
+.dialog p.flavor {
+  font-style: italic;
+  font-size: 14px;
+  opacity: 0.85;
+}
+
+.dialog .row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(212, 180, 120, 0.15);
+  font-size: 15px;
+}
+
+.dialog .row .price {
+  color: var(--hud-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Buy list laid out as a table: item name / right-aligned price / action.
+   Each .trade-row uses display:contents so its three cells align in the grid
+   columns across all rows while the row element stays addressable. */
+.trade-grid {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 2px 14px;
+}
+
+/* The bazaar's sell (offer) list has no price cell — name / action only. */
+.trade-grid.offer-grid {
+  grid-template-columns: 1fr auto;
+}
+
+.trade-row {
+  display: contents;
+}
+
+.trade-row .trade-name {
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(212, 180, 120, 0.15);
+  font-size: 15px;
+}
+
+.trade-row .price {
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(212, 180, 120, 0.15);
+  text-align: right;
+  color: var(--hud-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-row .hud-button {
+  border-bottom: 1px solid transparent;
+}
+
+.dialog .actions {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* --- Overlays (start / victory) ------------------------------------------ */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 8, 5, 0.88);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  z-index: 16779000;
+}
+
+.overlay h1 {
+  color: var(--hud-accent);
+  font-size: 42px;
+  margin: 0 0 12px;
+}
+
+.overlay p {
+  max-width: 560px;
+  font-size: 17px;
+  line-height: 1.6;
+}
+
+.overlay .actions {
+  margin-top: 24px;
+  display: flex;
+  gap: 12px;
+}
+
+.overlay .hud-button {
+  font-size: 17px;
+  padding: 10px 22px;
+}
+
+/* --- Bug report (design.md §21.1, F6) ------------------------------------- */
+
+/* Reuses the modal dialog frame; wider, since it shows a full JSON document. */
+.state-dump {
+  width: min(720px, 94vw);
+}
+
+.state-dump-label {
+  display: block;
+  margin: 6px 0 4px;
+  font-weight: 600;
+}
+
+/* Autofocused, so the user types straight into it (design.md §21.1). */
+.state-dump-description {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  background: rgba(10, 12, 18, 0.92);
+  color: inherit;
+  border: 1px solid var(--hud-border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font: inherit;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.state-dump-contents {
+  margin: 6px 0 0;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.state-dump-json {
+  margin: 8px 0 0;
+  max-height: 34vh;
+  overflow: auto;
+  background: rgba(10, 12, 18, 0.92);
+  border: 1px solid var(--hud-border);
+  border-radius: 4px;
+  padding: 10px 12px;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre;
+  /* Bug-report text must be selectable despite the global user-select: none. */
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* --- Render benchmark (design.md §21.1, F8) ------------------------------- */
+
+.bench-progress {
+  width: min(460px, 92vw);
+  text-align: center;
+}
+
+.bench-report {
+  width: min(860px, 96vw);
+}
+
+.bench-bar {
+  height: 8px;
+  margin: 12px 0 10px;
+  border: 1px solid var(--hud-border);
+  border-radius: 4px;
+  background: rgba(10, 12, 18, 0.7);
+  overflow: hidden;
+}
+
+.bench-bar-fill {
+  height: 100%;
+  background: #d8b26a;
+  transition: width 0.2s linear;
+}
+
+.bench-remaining,
+.bench-abort-hint {
+  margin: 4px 0 0;
+  opacity: 0.75;
+  font-size: 13px;
+}
+
+.bench-aborted {
+  margin: 4px 0 0;
+  color: #e2a15a;
+}
+
+/* Which measured series is the trustworthy one — the first thing to read. */
+.bench-headline {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #d8b26a;
+}
+
+/* The point-293 low-preset cost ranking — where to cut next at the low level. */
+.bench-low-profile {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  background: rgba(30, 22, 10, 0.55);
+  border: 1px solid var(--hud-border);
+  border-radius: 4px;
+}
+
+.bench-low-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #d8b26a;
+}
+
+.bench-low-dominant {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.bench-summary {
+  margin: 8px 0 0;
+  max-height: 55vh;
+  overflow: auto;
+  background: rgba(10, 12, 18, 0.92);
+  border: 1px solid var(--hud-border);
+  border-radius: 4px;
+  padding: 10px 12px;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre;
+  /* The report digest must be selectable despite the global user-select: none. */
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* --- Debug menu ----------------------------------------------------------- */
+
+.debug-menu {
+  position: absolute;
+  top: 48px;
+  left: 12px;
+  width: 320px;
+  max-height: calc(100vh - 70px);
+  overflow-y: auto;
+  background: rgba(10, 12, 18, 0.92);
+  border: 1px solid #4a5568;
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-family: Consolas, monospace;
+  font-size: 12.5px;
+  color: #cbd5e0;
+}
+
+.debug-menu h3 {
+  margin: 0 0 8px;
+  color: #90cdf4;
+  font-size: 14px;
+}
+
+.debug-menu label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin: 5px 0;
+}
+
+.debug-menu input[type='number'] {
+  width: 80px;
+  background: #1a202c;
+  border: 1px solid #4a5568;
+  color: #e2e8f0;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font: inherit;
+}
+
+.debug-menu select {
+  max-width: 170px;
+  background: #1a202c;
+  border: 1px solid #4a5568;
+  color: #e2e8f0;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font: inherit;
+}
+
+.debug-menu button {
+  background: #2d3748;
+  border: 1px solid #4a5568;
+  color: #e2e8f0;
+  font: inherit;
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  margin: 2px 2px 2px 0;
+}
+
+/* Filter row and collapsible groups (design.md §21.3, point 393). */
+.debug-menu input[type='text'] {
+  width: 150px;
+  background: #1a202c;
+  border: 1px solid #4a5568;
+  color: #e2e8f0;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font: inherit;
+}
+
+.debug-menu .debug-filter {
+  border-bottom: 1px solid #2d3748;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+}
+
+/* The filter takes the row's whole remaining width: its hint must not be cut
+   off, and the German one is the longer of the two. */
+.debug-menu .debug-filter input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+.debug-menu .debug-empty {
+  margin: 8px 0 0;
+  color: #a0aec0;
+  font-style: italic;
+}
+
+.debug-menu .debug-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin: 6px 0 0;
+  padding: 4px 6px;
+  text-align: left;
+  color: #90cdf4;
+  background: #1a202c;
+}
+
+.debug-menu .debug-group-caret {
+  color: #718096;
+}
+
+.debug-menu .debug-group-body {
+  border-left: 1px solid #2d3748;
+  margin-left: 4px;
+  padding-left: 8px;
+}
+
+/* --- 3D map labels (drei Html) -------------------------------------------- */
+
+.map-label {
+  background: rgba(24, 18, 10, 0.75);
+  border: 1px solid var(--hud-border);
+  color: var(--hud-text);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  white-space: nowrap;
+  transform: translateY(-8px);
+}
+
+/* The hold-Ctrl labels (design.md §17.8): they say WHAT a thing is while the key
+   is down, so they annotate more lightly than a map point's standing name. */
+.map-label.actor-label {
+  background: rgba(24, 18, 10, 0.68);
+  border-color: transparent;
+  font-size: 12px;
+  padding: 1px 6px;
+  pointer-events: none;
+  /* One size at every distance (no drei distanceFactor): a reading aid must
+     stay small and legible, not swell into the frame as the camera nears. */
+  transform: translateY(-4px);
+}
+
+/* Natural landmarks (lakes, mountains, waterfalls): subtler atlas-style label. */
+.map-label.landmark {
+  background: rgba(24, 18, 10, 0.45);
+  border-color: transparent;
+  font-style: italic;
+  font-size: 12px;
+}
+
+.map-label.landmark.water-label {
+  color: #bcd9ef;
+}
+
+/* Undiscovered points show a muted "?" until the traveller reaches/sights them
+   (design.md §17). */
+.map-label.undiscovered {
+  color: #8a7f6c;
+  font-weight: 700;
+  opacity: 0.75;
+}
+
+/* What a villager is saying, over his head (design.md §13.4): the syllables as
+   the journal lists them, and under each the player's own reading in the same
+   hand he wrote it in — never instead of the speech, always beside it. No
+   z-index of its own, so the HUD panels and modals above keep their order
+   (§17.4). */
+.speech-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 8px;
+  border: 1px solid var(--hud-border);
+  border-radius: 4px;
+  background: rgba(24, 18, 10, 0.72);
+  color: var(--hud-text);
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateY(-8px);
+}
+
+/* The atoms of a phrase stand side by side, in the order they are spoken. */
+.speech-label .speech-atoms {
+  display: flex;
+  gap: 8px;
+}
+
+/* The note a click would take (point 588): unmistakably the one in front, so
+   the invitation under it can only be read as being about this speaker. */
+.speech-label.targeted {
+  border-color: #d8b45a;
+  background: rgba(40, 30, 14, 0.86);
+  box-shadow: 0 0 6px rgba(216, 180, 90, 0.45);
+}
+
+/* Spoken to the player, not shouted at him — no text-transform here. */
+.speech-label .speech-invite {
+  margin-top: 1px;
+  font-size: 11px;
+  color: #d8b45a;
+  letter-spacing: 0.3px;
+}
+
+.speech-label .speech-atom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.15;
+}
+
+.speech-label .syllables {
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+
+.speech-label .reading {
+  font: 13px 'Segoe Script', 'Bradley Hand', 'Comic Sans MS', cursive;
+  color: #f0e4c8;
+  opacity: 0.85;
+}

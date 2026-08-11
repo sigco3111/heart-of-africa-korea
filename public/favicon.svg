@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- Compass rose on parchment, matching the game's journal look. -->
+  <circle cx="24" cy="24" r="22" fill="#e8d9b0" stroke="#6b4a2a" stroke-width="2.5"/>
+  <circle cx="24" cy="24" r="16.5" fill="none" stroke="#8a6a42" stroke-width="1"/>
+  <path d="M24 5.5 27.2 20.8 24 24 20.8 20.8Z" fill="#a33327"/>
+  <path d="M24 42.5 20.8 27.2 24 24 27.2 27.2Z" fill="#4a351f"/>
+  <path d="M5.5 24 20.8 20.8 24 24 20.8 27.2Z" fill="#4a351f"/>
+  <path d="M42.5 24 27.2 27.2 24 24 27.2 20.8Z" fill="#4a351f"/>
+  <circle cx="24" cy="24" r="2.4" fill="#6b4a2a"/>
+</svg>

@@ -1,0 +1,282 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/batch-resume-hook.mjs"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/lock-release-hook.mjs"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/dashboard-reminder-hook.mjs"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/model-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/push-arrival-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/dashboard-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/prep-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/batch-progress-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/render-verify-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/mechanism-review-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/criticality-review-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/queue-order-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/tasks-spec-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/tasks-archive-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/doc-budget-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/dashboard-conciseness-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/dashboard-card-topic-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/dashboard-integrity-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/ci-status-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/timestamp-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/retro-currency-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/guide-brevity-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/rule-review-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/findings-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/decision-card-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/container-ask-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/branch-hygiene-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/guard-health-guard.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/dashboard-sync.mjs"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit|Agent|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/board-first-guard.mjs"
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/worktree-reminder.mjs"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/closing-guard.mjs"
+          }
+        ]
+      },
+      {
+        "matcher": "PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/closing-guard.mjs"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/closing-guard.mjs"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/firewall-guard.mjs"
+          }
+        ]
+      },
+      {
+        "matcher": "PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/firewall-guard.mjs"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/prep-arm-hook.mjs"
+          }
+        ]
+      },
+      {
+        "matcher": "PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/prep-arm-hook.mjs"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/lock-heartbeat-hook.mjs"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit",
+      "Write",
+      "Bash",
+      "Glob",
+      "Grep",
+      "WebFetch",
+      "WebSearch",
+      "Skill",
+      "Agent",
+      "NotebookEdit",
+      "TodoWrite",
+      "PowerShell",
+      "ToolSearch",
+      "Workflow",
+      "Monitor",
+      "TaskOutput",
+      "TaskStop",
+      "SendMessage",
+      "CronCreate",
+      "CronDelete",
+      "CronList",
+      "EnterWorktree",
+      "ExitWorktree",
+      "DesignSync",
+      "PushNotification",
+      "RemoteTrigger",
+      "ScheduleWakeup",
+      "ReportFindings",
+      "Artifact",
+      "AskUserQuestion",
+      "EnterPlanMode",
+      "ExitPlanMode"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)"
+    ],
+    "defaultMode": "dontAsk",
+    "additionalDirectories": []
+  }
+}

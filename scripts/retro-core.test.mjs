@@ -1,0 +1,590 @@
+// Decision/fingerprint sweep of the retrospective-currency toolchain
+// (retro-core + retro-sources): the sources fingerprint changes exactly when
+// a source changes, the guard's stale/fresh verdict, and the refresh's
+// only-between-the-markers rewrite that preserves the analysis prose.
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
+import {
+  AUTO_END,
+  AUTO_START,
+  MEMORY_TYPES,
+  buildRows,
+  computeFingerprint,
+  escalationCount,
+  evaluateCurrency,
+  extractFingerprint,
+  guardScriptNames,
+  matchingGuards,
+  parseMemoryDescription,
+  parseMemoryType,
+  processTaskPoints,
+  refreshedDoc,
+  renderAutoSection,
+  replaceAutoSection,
+  revertCommits,
+  severityFor,
+  skeletonDoc,
+  LEDGER_GAP_MARK,
+  evaluateLedger,
+  ledgerGaps,
+  parseLedger,
+  parseLessonSubsections,
+} from './retro-core.mjs'
+import { collectMemories, collectSources, defaultMemoryDir } from './retro-sources.mjs'
+
+const memoryFile = (type, description = 'Eine Regel') =>
+  `---\nname: x\ndescription: "${description}"\nmetadata: \n  node_type: memory\n  type: ${type}\n---\n\nBody. Angemahnt am 20.07. und 21.07.2026.\n`
+
+describe('memory frontmatter parsing', () => {
+  it('reads the type without tripping on node_type, and the description', () => {
+    const text = memoryFile('feedback', 'Zeitstempel vor jeder Antwort')
+    expect(parseMemoryType(text)).toBe('feedback')
+    expect(parseMemoryDescription(text)).toBe('Zeitstempel vor jeder Antwort')
+  })
+  it('returns null without frontmatter and on malformed input', () => {
+    expect(parseMemoryType('no frontmatter')).toBeNull()
+    expect(parseMemoryType(null)).toBeNull()
+    expect(parseMemoryDescription(undefined)).toBeNull()
+  })
+  it('pins the relevant memory kinds (reference stays out)', () => {
+    expect([...MEMORY_TYPES].sort()).toEqual(['feedback', 'project', 'user'])
+    expect(MEMORY_TYPES.has('reference')).toBe(false)
+  })
+})
+
+describe('guardScriptNames', () => {
+  it('keeps guards/hooks/infra, drops cores, tests and race workers', () => {
+    const names = guardScriptNames([
+      'dashboard-guard.mjs',
+      'dashboard-guard-core.mjs',
+      'retro-core.test.mjs',
+      'batch-singleton.mjs',
+      'batch-singleton-race-worker.mjs',
+      'lock-heartbeat-hook.mjs',
+      'batch-doctor.mjs',
+      'batch-autostart.mjs',
+      'worktree-reminder.mjs',
+      'perf-bench.mjs',
+      'notify.mjs',
+      'retro-currency-guard.mjs',
+    ])
+    expect(names).toEqual([
+      'batch-autostart.mjs',
+      'batch-doctor.mjs',
+      'batch-singleton.mjs',
+      'dashboard-guard.mjs',
+      'lock-heartbeat-hook.mjs',
+      'retro-currency-guard.mjs',
+      'worktree-reminder.mjs',
+    ])
+    expect(guardScriptNames(null)).toEqual([])
+  })
+})
+
+describe('revertCommits', () => {
+  it('collects Revert/Reapply subjects only', () => {
+    const log = [
+      'aaaa111 Add the crocodile ambush',
+      'bbbb222 Revert "Add SSR to the pipeline"',
+      'cccc333 Reapply the TRAA node',
+      '',
+    ].join('\n')
+    expect(revertCommits(log)).toEqual([
+      { hash: 'bbbb222', subject: 'Revert "Add SSR to the pipeline"' },
+      { hash: 'cccc333', subject: 'Reapply the TRAA node' },
+    ])
+    expect(revertCommits(undefined)).toEqual([])
+  })
+})
+
+describe('processTaskPoints', () => {
+  it('keeps process/meta titles with their done state, skips game points', () => {
+    const tasks = [
+      '- [ ] 290. A RELIABLE MECHANISM: a Stop-hook guard for the retrospective',
+      '- [x] 271. Harden the batch singleton lock',
+      '- [ ] 130. The crocodile ambush on river water',
+      '  continuation line with the word guard must not match',
+    ].join('\n')
+    expect(processTaskPoints(tasks)).toEqual([
+      { num: 290, done: false, title: 'A RELIABLE MECHANISM: a Stop-hook guard for the retrospective' },
+      { num: 271, done: true, title: 'Harden the batch singleton lock' },
+    ])
+  })
+})
+
+describe('escalationCount / severityFor', () => {
+  it('counts distinct German and ISO dates, floor 1', () => {
+    expect(escalationCount('am 09.07. und 10.07., dann 2026-07-16, nochmal 09.07.')).toBe(3)
+    expect(escalationCount('no dates here')).toBe(1)
+    expect(escalationCount(null)).toBe(1)
+  })
+  it('maps attempts to the heuristic severity bands', () => {
+    expect(severityFor(1)).toBe('niedrig')
+    expect(severityFor(2)).toBe('mittel')
+    expect(severityFor(4)).toBe('hoch')
+  })
+})
+
+describe('computeFingerprint', () => {
+  const base = () => ({
+    memories: [
+      { name: 'chat-timestamp', hash: 'h1' },
+      { name: 'language-german', hash: 'h2' },
+    ],
+    guards: ['dashboard-guard.mjs', 'timestamp-guard.mjs'],
+    reverts: [{ hash: 'r1', subject: 'Revert "x"' }],
+    processPoints: [{ num: 290, done: false, title: 'Guard for the retrospective' }],
+  })
+
+  it('is stable across list order and repeated calls', () => {
+    const a = computeFingerprint(base())
+    const shuffled = base()
+    shuffled.memories.reverse()
+    shuffled.guards.reverse()
+    expect(computeFingerprint(shuffled)).toBe(a)
+    expect(computeFingerprint(base())).toBe(a)
+    expect(a).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('changes when any single source changes', () => {
+    const a = computeFingerprint(base())
+
+    const editedMemory = base()
+    editedMemory.memories[0].hash = 'h1-edited' // an appended escalation
+    expect(computeFingerprint(editedMemory)).not.toBe(a)
+
+    const newGuard = base()
+    newGuard.guards.push('retro-currency-guard.mjs')
+    expect(computeFingerprint(newGuard)).not.toBe(a)
+
+    const newRevert = base()
+    newRevert.reverts.push({ hash: 'r2', subject: 'Revert "y"' })
+    expect(computeFingerprint(newRevert)).not.toBe(a)
+
+    const tickedPoint = base()
+    tickedPoint.processPoints[0].done = true
+    expect(computeFingerprint(tickedPoint)).not.toBe(a)
+  })
+
+  it('is total on empty/missing input', () => {
+    expect(computeFingerprint()).toMatch(/^[0-9a-f]{64}$/)
+    expect(computeFingerprint({})).toBe(computeFingerprint())
+  })
+})
+
+describe('matchingGuards / buildRows', () => {
+  it('links a memory to guards sharing a meaningful name token', () => {
+    const guards = ['timestamp-guard.mjs', 'timestamp-posttool-hook.mjs', 'dashboard-guard.mjs']
+    expect(matchingGuards('chat-timestamp', guards)).toEqual([
+      'timestamp-guard.mjs',
+      'timestamp-posttool-hook.mjs',
+    ])
+    expect(matchingGuards('language-german', guards)).toEqual([])
+  })
+  it('builds one sorted row per memory with measure and status', () => {
+    const rows = buildRows({
+      memories: [
+        { name: 'language-german', description: 'Deutsch im Chat', hash: 'b', escalations: 3 },
+        { name: 'chat-timestamp', description: 'Zeitstempel', hash: 'a', escalations: 9 },
+      ],
+      guards: ['timestamp-guard.mjs'],
+    })
+    expect(rows.map((r) => r.name)).toEqual(['chat-timestamp', 'language-german'])
+    expect(rows[0]).toMatchObject({
+      klass: 'Zeitstempel',
+      attempts: 9,
+      severity: 'hoch',
+      measure: 'timestamp-guard.mjs',
+      status: '✔ Mechanismus',
+    })
+    expect(rows[1]).toMatchObject({ severity: 'mittel', measure: '— (Regel/Memory)', status: '◐ Regel' })
+  })
+})
+
+describe('auto section rendering and splicing', () => {
+  const sources = {
+    memories: [{ name: 'chat-timestamp', description: 'Zeitstempel', hash: 'a', escalations: 9 }],
+    guards: ['timestamp-guard.mjs'],
+    reverts: [{ hash: 'r1', subject: 'Revert "x"' }],
+    processPoints: [{ num: 290, done: false, title: 'Retrospective guard' }],
+  }
+  const fp = computeFingerprint(sources)
+
+  it('renders markers, fingerprint and the counts line; extractFingerprint roundtrips', () => {
+    const section = renderAutoSection({
+      rows: buildRows(sources),
+      ...sources,
+      fingerprint: fp,
+      refreshedStamp: 'Freitag, 24.07.2026, 12:00',
+      refreshedIso: '2026-07-24T10:00:00.000Z',
+    })
+    expect(section.startsWith(AUTO_START)).toBe(true)
+    expect(section.endsWith(AUTO_END)).toBe(true)
+    expect(section).toContain('| Zeitstempel | 9 | hoch | timestamp-guard.mjs | ✔ Mechanismus |')
+    expect(section).toContain('1 Guard-/Hook-Skripte · 1 Revert-/Reapply-Commits · 1 Prozess-/Meta-TASKS-Punkte (davon 1 offen)')
+    expect(extractFingerprint(section)).toBe(fp)
+  })
+
+  it('replaces ONLY the region between the markers, preserving surrounding prose', () => {
+    const doc = `# Titel\n\nProsa davor.\n\n${AUTO_START}\nALTER INHALT\n${AUTO_END}\n\nProsa danach.\n`
+    const next = replaceAutoSection(doc, `${AUTO_START}\nNEU\n${AUTO_END}`)
+    expect(next).toBe(`# Titel\n\nProsa davor.\n\n${AUTO_START}\nNEU\n${AUTO_END}\n\nProsa danach.\n`)
+  })
+
+  it('appends behind a rule when the markers are absent', () => {
+    const next = replaceAutoSection('# Titel\n\nNur Prosa.\n', `${AUTO_START}\nNEU\n${AUTO_END}`)
+    expect(next).toBe(`# Titel\n\nNur Prosa.\n\n---\n\n${AUTO_START}\nNEU\n${AUTO_END}\n`)
+  })
+
+  it('refreshedDoc: null doc yields the skeleton; an existing doc keeps its prose and updates the fingerprint', () => {
+    const created = refreshedDoc(null, sources, { refreshedStamp: 's', refreshedIso: 'i' })
+    expect(created).toContain('# Retrospektive der Zusammenarbeit')
+    expect(extractFingerprint(created)).toBe(fp)
+
+    const grown = {
+      ...sources,
+      guards: [...sources.guards, 'retro-currency-guard.mjs'],
+    }
+    const updated = refreshedDoc(created, grown, { refreshedStamp: 's2', refreshedIso: 'i2' })
+    expect(updated).toContain('# Retrospektive der Zusammenarbeit')
+    expect(extractFingerprint(updated)).toBe(computeFingerprint(grown))
+    expect(updated.split(AUTO_START).length).toBe(2) // exactly one auto section
+    // idempotent when nothing changed
+    expect(refreshedDoc(updated, grown, { refreshedStamp: 's2', refreshedIso: 'i2' })).toBe(updated)
+  })
+
+  it('skeletonDoc carries the section verbatim', () => {
+    expect(skeletonDoc('SECTION')).toContain('SECTION')
+  })
+})
+
+describe('evaluateCurrency (the guard decision)', () => {
+  const doc = (fp) => `Prosa.\n<!-- RETRO-FINGERPRINT: ${fp} -->\n`
+  const fp = computeFingerprint({ guards: ['a-guard.mjs'] })
+
+  it('allows when the recorded fingerprint matches the current one', () => {
+    expect(evaluateCurrency({ docText: doc(fp), currentFingerprint: fp })).toBeNull()
+  })
+  it('blocks with the refresh+review instruction when stale', () => {
+    const other = computeFingerprint({ guards: ['a-guard.mjs', 'b-guard.mjs'] })
+    const verdict = evaluateCurrency({ docText: doc(fp), currentFingerprint: other })
+    expect(verdict).toMatchObject({ decision: 'block' })
+    expect(verdict.reason).toContain('scripts/retro-refresh.mjs')
+    expect(verdict.reason).toContain('NEW problem class')
+  })
+  it('blocks when the doc has no recorded fingerprint (never refreshed)', () => {
+    const verdict = evaluateCurrency({ docText: 'Prosa ohne Marker.', currentFingerprint: fp })
+    expect(verdict).toMatchObject({ decision: 'block' })
+    expect(verdict.reason).toContain('no sources fingerprint')
+  })
+
+  // The beginner guide is prose only — nothing regenerates it, so its currency
+  // rests on an explicit review stamp. Regression witness (25.07.2026): it kept
+  // teaching a superseded rule for a day while the retrospective was current.
+  const guide = (f) => `Anleitung.\n<!-- GUIDE-FINGERPRINT: ${f} -->\n`
+
+  it('allows when BOTH docs carry the current fingerprint', () => {
+    expect(evaluateCurrency({ docText: doc(fp), guideText: guide(fp), currentFingerprint: fp })).toBeNull()
+  })
+  it('blocks when the retrospective is current but the guide was not reviewed', () => {
+    const stale = computeFingerprint({ guards: ['old.mjs'] })
+    const verdict = evaluateCurrency({ docText: doc(fp), guideText: guide(stale), currentFingerprint: fp })
+    expect(verdict).toMatchObject({ decision: 'block' })
+    expect(verdict.reason).toContain('vibe-coding-anleitung.md')
+    expect(verdict.reason).toContain('--guide-reviewed')
+  })
+  it('blocks when the guide carries no review stamp at all', () => {
+    const verdict = evaluateCurrency({ docText: doc(fp), guideText: 'Anleitung ohne Stempel.', currentFingerprint: fp })
+    expect(verdict).toMatchObject({ decision: 'block' })
+    expect(verdict.reason).toContain('no review stamp')
+  })
+  it('reports the RETROSPECTIVE first — a guide stamp is meaningless while the sources are unreflected', () => {
+    const other = computeFingerprint({ guards: ['a-guard.mjs', 'b-guard.mjs'] })
+    const verdict = evaluateCurrency({ docText: doc(fp), guideText: guide(other), currentFingerprint: other })
+    expect(verdict.reason).toContain('retrospektive-zusammenarbeit.md')
+  })
+  it('skips the guide half when the guide is absent on this machine', () => {
+    expect(evaluateCurrency({ docText: doc(fp), currentFingerprint: fp })).toBeNull()
+  })
+  it('never throws on malformed input (the wrapper fail-open depends on it)', () => {
+    expect(() => evaluateCurrency()).not.toThrow()
+    expect(() => evaluateCurrency({ docText: 42, guideText: {}, currentFingerprint: null })).not.toThrow()
+  })
+})
+
+describe('collectSources / collectMemories (fs-level, temp fixtures)', () => {
+  const dirs = []
+  const tempDir = () => {
+    const d = mkdtempSync(join(tmpdir(), 'retro-test-'))
+    dirs.push(d)
+    return d
+  }
+  afterEach(() => {
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true })
+  })
+
+  it('collects only feedback/project/user memories and hashes their content', () => {
+    const mem = tempDir()
+    writeFileSync(join(mem, 'chat-timestamp.md'), memoryFile('feedback', 'Zeitstempel'))
+    writeFileSync(join(mem, 'some-reference.md'), memoryFile('reference'))
+    writeFileSync(join(mem, 'MEMORY.md'), '# Memory Index\n(no frontmatter)\n')
+    const memories = collectMemories(mem)
+    expect(memories.map((m) => m.name)).toEqual(['chat-timestamp'])
+    expect(memories[0]).toMatchObject({ description: 'Zeitstempel', escalations: 2 })
+    expect(memories[0].hash).toMatch(/^[0-9a-f]{64}$/)
+    expect(collectMemories(join(mem, 'does-not-exist'))).toEqual([])
+  })
+
+  it('end to end: the fingerprint changes when a memory changes and is stable otherwise', () => {
+    const repo = tempDir()
+    const mem = tempDir()
+    mkdirSync(join(repo, 'scripts'))
+    writeFileSync(join(repo, 'scripts', 'demo-guard.mjs'), '// guard')
+    writeFileSync(join(repo, 'TASKS.md'), '- [ ] 1. Build the demo guard workflow\n')
+    writeFileSync(join(mem, 'rule.md'), memoryFile('feedback'))
+    const opts = { repoRoot: repo, memoryDir: mem }
+    // no git in the temp repo — a git failure must THROW (the guard wrapper fail-opens)
+    expect(() => collectSources(opts)).toThrow()
+
+    // stub the git axis out by comparing computeFingerprint over collected parts
+    const partsA = {
+      memories: collectMemories(mem),
+      guards: ['demo-guard.mjs'],
+      reverts: [],
+      processPoints: processTaskPoints('- [ ] 1. Build the demo guard workflow\n'),
+    }
+    const a = computeFingerprint(partsA)
+    expect(computeFingerprint({ ...partsA, memories: collectMemories(mem) })).toBe(a)
+
+    writeFileSync(join(mem, 'rule.md'), memoryFile('feedback', 'Eine Regel — eskaliert am 22.07.'))
+    expect(computeFingerprint({ ...partsA, memories: collectMemories(mem) })).not.toBe(a)
+  })
+
+  // ASSERT PER PLATFORM, NEVER BY SKIPPING (point 387). This case used to
+  // `skipIf(platform !== 'win32')`, so on every machine that actually runs the
+  // suite — the Linux host, the hosted CI runner — it silently meant nothing.
+  // That is the same blindness that made a negative control assert a Windows
+  // incident everywhere and turn every Ubuntu run red on 30.07.2026, read from
+  // the other side. What is platform-dependent here is only the DRIVE LETTER:
+  // `resolve()` of a Windows literal on POSIX prepends the runner cwd, so the
+  // lowercased first character is the cwd's. The munging rule itself — every
+  // ':' '\' '/' becomes '-' — is the point of the test and holds on both.
+  it('defaultMemoryDir munges the repo path like the harness (drive lowered, separators to dashes)', () => {
+    const dir = defaultMemoryDir('C:\\Users\\Patri\\Documents\\Developing\\hoa').replace(/\\/g, '/')
+    if (process.platform === 'win32') {
+      expect(dir).toMatch(/\/\.claude\/projects\/c--Users-Patri-Documents-Developing-hoa\/memory$/)
+    } else {
+      expect(dir).toMatch(/\/\.claude\/projects\/.+-C--Users-Patri-Documents-Developing-hoa\/memory$/)
+    }
+  })
+})
+
+// A source directory that resolves to NOTHING is never a real state: it means
+// the path was derived wrongly. In a git worktree that really happened — the
+// project key is built from the checkout path, the lookup missed, and the
+// refresh rewrote the appendix as EMPTY and exited 0. Sixty-five rows were gone
+// before a diff review caught it (27.07.2026).
+describe('collectSources refuses an empty memory directory', () => {
+  it('throws instead of reporting zero memories', () => {
+    expect(() => collectSources({ memoryDir: join(tmpdir(), 'hoa-no-such-memory-dir-371') })).toThrow(
+      /no memories under/i,
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Lesson→mechanism ledger (point 370). A lesson written down is not thereby
+// obeyed: every lesson subsection must carry a recorded decision, and the gate
+// fires at the moment that decision is still cheap.
+describe('lesson→mechanism ledger', () => {
+  const retro = [
+    '# Retro',
+    '',
+    '## 1. Kernthese',
+    'prose',
+    '',
+    '### 3.1 Der Batch, der stehen blieb',
+    'prose',
+    '',
+    '### 3.2 Parallele Sessions',
+    'prose',
+    '',
+    '### 3.3 Berechtigungs-Rückfragen',
+    'prose',
+    '',
+    AUTO_START,
+    '### 9.9 A generated heading that decides nothing',
+    AUTO_END,
+  ].join('\n')
+
+  const ledger = (rows) =>
+    ['| Lektion | Titel | Ergebnis | Durchsetzer / Begründung |', '|---|---|---|---|', ...rows].join('\n')
+
+  const exists = (p) => ['scripts/a-guard.mjs', 'scripts/b-guard.mjs'].includes(p)
+  const REASON = 'Bewusst keine: Urteilssache, maschinell nicht prüfbar.'
+  const full = [
+    '| 3.1 | Der Batch, der stehen blieb | 1 | scripts/a-guard.mjs |',
+    '| 3.2 | Parallele Sessions | 2 | scripts/b-guard.mjs |',
+    `| 3.3 | Berechtigungs-Rückfragen | 3 | ${REASON} |`,
+  ]
+
+  it('reads the lesson subsections out of the PROSE region only', () => {
+    const { lessons, unledgerable } = parseLessonSubsections(retro)
+    expect(lessons.map((l) => l.id)).toEqual(['3.1', '3.2', '3.3'])
+    expect(lessons[0].title).toBe('Der Batch, der stehen blieb')
+    expect(unledgerable).toEqual([])
+  })
+
+  it('counts a lesson written one heading level up, so it cannot escape the gate', () => {
+    const { lessons } = parseLessonSubsections('## 3.9 Eine Lektion als Level-2\ntext\n')
+    expect(lessons.map((l) => l.id)).toEqual(['3.9'])
+  })
+
+  it('passes when each of the three outcomes is recorded', () => {
+    expect(evaluateLedger({ retroText: retro, ledgerText: ledger(full), pathExists: exists })).toBeNull()
+  })
+
+  it('BLOCKS a subsection with no ledger entry', () => {
+    const v = evaluateLedger({ retroText: retro, ledgerText: ledger(full.slice(0, 2)), pathExists: exists })
+    expect(v.decision).toBe('block')
+    expect(v.reason).toMatch(/§3\.3 .* has NO ledger entry/)
+  })
+
+  it('BLOCKS an entry naming an enforcer that does not exist', () => {
+    const rows = [...full]
+    rows[0] = '| 3.1 | Der Batch, der stehen blieb | 1 | scripts/never-built-guard.mjs |'
+    const v = evaluateLedger({ retroText: retro, ledgerText: ledger(rows), pathExists: exists })
+    expect(v.decision).toBe('block')
+    expect(v.reason).toMatch(/never-built-guard\.mjs.*does not exist/s)
+  })
+
+  it('BLOCKS an outcome outside 1/2/3', () => {
+    const rows = [...full]
+    rows[1] = '| 3.2 | Parallele Sessions | 4 | scripts/b-guard.mjs |'
+    expect(evaluateLedger({ retroText: retro, ledgerText: ledger(rows), pathExists: exists }).reason).toMatch(
+      /outcome "4" is not one of 1, 2 or 3/,
+    )
+  })
+
+  it('BLOCKS outcome 1/2 that names no enforcing file at all', () => {
+    const rows = [...full]
+    rows[0] = '| 3.1 | Der Batch, der stehen blieb | 1 | irgendein Guard halt |'
+    expect(evaluateLedger({ retroText: retro, ledgerText: ledger(rows), pathExists: exists }).reason).toMatch(
+      /names an enforcer but the cell contains no file path/,
+    )
+  })
+
+  it('BLOCKS outcome 3 with a blank reason — a dash is not a decision', () => {
+    const rows = [...full]
+    rows[2] = '| 3.3 | Berechtigungs-Rückfragen | 3 | — |'
+    expect(evaluateLedger({ retroText: retro, ledgerText: ledger(rows), pathExists: exists }).reason).toMatch(
+      /outcome 3 needs a WRITTEN reason/,
+    )
+  })
+
+  it('BLOCKS an orphan row that refers to no lesson', () => {
+    const rows = [...full, `| 3.9 | Eine gelöschte Lektion | 3 | ${REASON} |`]
+    expect(evaluateLedger({ retroText: retro, ledgerText: ledger(rows), pathExists: exists }).reason).toMatch(
+      /orphan row/,
+    )
+  })
+
+  it('BLOCKS an unnumbered ### subsection, which would otherwise bypass the ledger', () => {
+    const text = retro.replace('### 3.3 Berechtigungs-Rückfragen', '### Eine namenlose Lehre')
+    const v = evaluateLedger({ retroText: text, ledgerText: ledger(full.slice(0, 2)), pathExists: exists })
+    expect(v.reason).toMatch(/carries no N\.M id/)
+  })
+
+  it('BLOCKS a missing ledger file — absent is not exempt', () => {
+    const v = evaluateLedger({ retroText: retro, ledgerText: null, pathExists: exists })
+    expect(v.decision).toBe('block')
+    expect(v.reason).toMatch(/is MISSING/)
+  })
+
+  it('reports EVERY problem in one message, never one per turn', () => {
+    const rows = ['| 3.1 | Der Batch, der stehen blieb | 7 | scripts/a-guard.mjs |']
+    const v = evaluateLedger({ retroText: retro, ledgerText: ledger(rows), pathExists: exists })
+    expect(v.reason).toMatch(/§3\.1/)
+    expect(v.reason).toMatch(/§3\.2/)
+    expect(v.reason).toMatch(/§3\.3/)
+  })
+
+  it('counts a lesson demoted to ####, so a level-DOWN cannot escape either', () => {
+    const { lessons } = parseLessonSubsections('#### 3.9 Eine tief gehängte Lektion\ntext\n')
+    expect(lessons.map((l) => l.id)).toEqual(['3.9'])
+  })
+
+  it('fails OPEN on a file with no table at all — that shape is a parser fault', () => {
+    const v = evaluateLedger({ retroText: retro, ledgerText: '# Ledger\n\n(no table yet)\n', pathExists: exists })
+    expect(v.decision).toBe('allow')
+    expect(v.warning).toMatch(/shows no table at all/)
+  })
+
+  it('BLOCKS a gutted table — corruption must not escape where a parse fault may', () => {
+    const v = evaluateLedger({
+      retroText: retro,
+      ledgerText: '| Lektion | Titel |\n|---|---|\n| irgendwas | prosa |\n',
+      pathExists: exists,
+    })
+    expect(v.decision).toBe('block')
+    expect(v.reason).toMatch(/not one of them parses/)
+  })
+
+  it('fails OPEN when no lesson parses out of the retrospective', () => {
+    const v = evaluateLedger({ retroText: '# Nothing here\n', ledgerText: ledger(full), pathExists: exists })
+    expect(v.decision).toBe('allow')
+    expect(v.warning).toMatch(/no lesson subsections parsed/)
+  })
+
+  it('never fabricates a dead-path failure when it cannot check paths', () => {
+    const rows = ['| 3.1 | Der Batch, der stehen blieb | 1 | scripts/whatever.mjs |', ...full.slice(1)]
+    expect(evaluateLedger({ retroText: retro, ledgerText: ledger(rows) })).toBeNull()
+  })
+
+  it('reports a retitled lesson as an advisory, never as a block', () => {
+    const rows = [...full]
+    rows[0] = '| 3.1 | Der alte Titel | 1 | scripts/a-guard.mjs |'
+    const v = evaluateLedger({ retroText: retro, ledgerText: ledger(rows), pathExists: exists })
+    expect(v.decision).toBe('allow')
+    expect(v.warning).toMatch(/retitled/)
+  })
+
+  it('surfaces the admitted gaps, so "no enforcement" is reported and never silently a 3', () => {
+    const rows = [...full]
+    rows[2] = `| 3.3 | Berechtigungs-Rückfragen | 3 | ${LEDGER_GAP_MARK} kein Durchsetzer vorhanden, Punkt offen |`
+    const { entries } = parseLedger(ledger(rows))
+    expect(ledgerGaps(entries).map((e) => e.id)).toEqual(['3.3'])
+    expect(evaluateLedger({ retroText: retro, ledgerText: ledger(rows), pathExists: exists })).toBeNull()
+  })
+
+  it('skips the header and separator rows of the table', () => {
+    expect(parseLedger(ledger(full)).entries).toHaveLength(3)
+  })
+
+  it('BLOCKS two rows for one lesson, rather than silently taking the last', () => {
+    const rows = [...full, '| 3.1 | Der Batch, der stehen blieb | 3 | Eine widersprechende zweite Entscheidung. |']
+    expect(evaluateLedger({ retroText: retro, ledgerText: ledger(rows), pathExists: exists }).reason).toMatch(
+      /§3\.1 has more than one ledger row/,
+    )
+  })
+})
+
+// The REAL documents must satisfy the gate that governs them — §3.34's lesson:
+// a suite that only exercises injected doubles never touches the thing that
+// actually runs. This one reads the shipped retrospective and ledger off disk
+// and checks every claimed enforcer against the real tree.
+describe('the shipped retrospective and ledger', () => {
+  it('carries a mechanism decision for every lesson, each pointing at a real file', async () => {
+    const { readFileSync, existsSync } = await import('node:fs')
+    const { resolve, isAbsolute } = await import('node:path')
+    const { DOC_PATH, LEDGER_PATH, REPO_ROOT } = await import('./retro-sources.mjs')
+    const verdict = evaluateLedger({
+      retroText: readFileSync(DOC_PATH, 'utf8'),
+      ledgerText: existsSync(LEDGER_PATH) ? readFileSync(LEDGER_PATH, 'utf8') : null,
+      pathExists: (p) => !isAbsolute(p) && !p.split('/').includes('..') && existsSync(resolve(REPO_ROOT, p)),
+    })
+    expect(verdict?.decision === 'block' ? verdict.reason : 'clean').toBe('clean')
+  })
+})

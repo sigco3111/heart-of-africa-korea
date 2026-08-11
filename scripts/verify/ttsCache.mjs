@@ -1,0 +1,156 @@
+// Local TTS asset cache for the headless verification (CLAUDE.md §7.1 pt. 19,
+// point 88): the Kokoro model (~90 MB), its tokenizer files and the ORT-WASM
+// runtime are served from .cache/tts/ instead of the Hugging Face / jsdelivr
+// CDNs on every run — repeated regressions once tripped HF's rate limit
+// (HTTP 403) and failed voice.mjs on a healthy codebase.
+//
+// Record-and-replay: a MISS is fetched once (following redirects) and stored;
+// once a fully successful voice run marks the cache complete, later runs are
+// STRICT — no network request leaves the machine for these hosts, proving the
+// regression CDN-independent. The player-facing path is untouched (browser
+// cache + CDN streaming per CLAUDE.md §3).
+import { createHash } from 'node:crypto'
+import { createServer } from 'node:http'
+import { createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
+
+export const CACHE_DIR = fileURLToPath(new URL('../../.cache/tts/', import.meta.url))
+const COMPLETE_MARKER = join(CACHE_DIR, '.complete')
+
+/** Hosts the cache owns. Everything else passes through untouched. */
+const CACHED_HOSTS = [/(^|\.)huggingface\.co$/, /^cdn\.jsdelivr\.net$/]
+
+/** The fp32 model is only probed and then abandoned for the quantized one on
+ *  the WASM path — aborting it outright forces the fallback immediately and
+ *  keeps ~330 MB out of the cache. */
+const ABORTED_PATHS = [/\/onnx\/model\.onnx$/]
+
+const keyFor = (url) => createHash('sha1').update(url.split('?')[0]).digest('hex')
+
+/** Fetch a cache MISS through Node rather than through Playwright's `route.fetch`
+ *  (point 475). The driver picks the address family itself and picked IPv6 on a host
+ *  that has no IPv6 route, so every recording run died with ENETUNREACH on the model
+ *  download while the BROWSER reached the same CDN without trouble — and no Node DNS
+ *  setting reaches inside the driver. Node's own fetch tries the families in order and
+ *  falls back, which is all this needs. The shape mirrors what the caller used
+ *  (`status()`, `headers()`, plus the body already read), so the recording path reads
+ *  the same on every platform — no branch, nothing for one host to drift away from. */
+async function recordingFetch(url) {
+  const res = await fetch(url, { redirect: 'follow' })
+  const body = Buffer.from(await res.arrayBuffer())
+  const headers = Object.fromEntries(res.headers)
+  return { status: () => res.status, headers: () => headers, body }
+}
+
+export function ttsCacheComplete() {
+  return existsSync(COMPLETE_MARKER)
+}
+
+export function markTtsCacheComplete() {
+  mkdirSync(CACHE_DIR, { recursive: true })
+  writeFileSync(COMPLETE_MARKER, new Date().toISOString())
+}
+
+/** Local streaming server for the cached bodies: fulfilling ~90 MB straight
+ *  through the DevTools protocol kills the browser process (base64-inflated
+ *  message), so the route answers with a tiny 302 to 127.0.0.1 instead and
+ *  Node streams the file with CORS headers. */
+let serverPort = null
+async function ensureServer() {
+  if (serverPort) return serverPort
+  const server = createServer((req, res) => {
+    const key = (req.url ?? '/').slice(1).replace(/[^a-f0-9]/g, '')
+    const bodyPath = join(CACHE_DIR, key + '.bin')
+    const metaPath = join(CACHE_DIR, key + '.json')
+    if (!key || !existsSync(bodyPath) || !existsSync(metaPath)) {
+      res.writeHead(404, { 'access-control-allow-origin': '*' })
+      return res.end()
+    }
+    const meta = JSON.parse(readFileSync(metaPath, 'utf8'))
+    res.writeHead(200, { 'content-type': meta.contentType, 'access-control-allow-origin': '*' })
+    createReadStream(bodyPath).pipe(res)
+  })
+  server.unref()
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  serverPort = server.address().port
+  return serverPort
+}
+
+/**
+ * Install the cache routes on a Playwright page. Returns a live stats object
+ * ({ hits, misses, aborted, strict, served, fetchErrors }) the caller can assert
+ * on. `fetchErrors` holds every recording fetch that failed — a suite that ignores
+ * it would record an incomplete cache and mark it complete.
+ */
+export async function installTtsCache(page) {
+  mkdirSync(CACHE_DIR, { recursive: true })
+  const strict = ttsCacheComplete()
+  // `served` timestamps every model/runtime asset the page asked for (wall
+  // clock), so a suite can PROVE its cold-load probe really spans the load
+  // rather than a window the engine had already finished behind it (point 304).
+  const stats = { hits: 0, misses: 0, aborted: 0, strict, served: [], fetchErrors: [] }
+  await page.route('**/*', async (route) => {
+    try {
+      return await handleRoute(route, { strict, stats })
+    } catch (err) {
+      // A recording fetch that REJECTS (an unreachable CDN, a dropped connection)
+      // used to escape this handler as an unhandled rejection and kill the whole
+      // suite process — exit 1, not one PASS or FAIL line, nothing to classify
+      // (04.08.2026: the container firewall allowed huggingface.co but not the CDN
+      // it redirects to, and both TTS suites died that way). The route is aborted
+      // instead: the page then sees the asset fail, the suite's own checks report
+      // what that costs, and the reason is recorded here for the caller to name.
+      stats.fetchErrors.push({ url: route.request().url().split('?')[0], message: String(err?.message ?? err) })
+      try {
+        return await route.abort()
+      } catch {
+        // The route may already be resolved or the page gone — nothing left to do.
+      }
+    }
+  })
+  return stats
+}
+
+/** The cache decision for one request. Throws on a network failure; the caller
+ *  above turns that into an abort plus a recorded reason. */
+async function handleRoute(route, { strict, stats }) {
+  const url = route.request().url()
+  let host
+  try {
+    host = new URL(url).hostname
+  } catch {
+    return route.continue()
+  }
+  if (!CACHED_HOSTS.some((re) => re.test(host))) return route.continue()
+  if (ABORTED_PATHS.some((re) => re.test(url.split('?')[0]))) {
+    stats.aborted++
+    return route.abort()
+  }
+  const key = keyFor(url)
+  stats.served.push({ url: url.split('?')[0], at: Date.now() })
+  const bodyPath = join(CACHE_DIR, `${key}.bin`)
+  const metaPath = join(CACHE_DIR, `${key}.json`)
+  if (existsSync(bodyPath) && existsSync(metaPath)) {
+    stats.hits++
+    const port = await ensureServer()
+    return route.fulfill({ status: 302, headers: { location: `http://127.0.0.1:${port}/${key}` } })
+  }
+  if (strict) {
+    // A complete cache must never need the network — surface the gap.
+    stats.misses++
+    return route.abort()
+  }
+  stats.misses++
+  const res = await recordingFetch(url)
+  const body = res.body
+  if (res.status() === 200) {
+    writeFileSync(bodyPath, body)
+    writeFileSync(metaPath, JSON.stringify({ url: url.split('?')[0], contentType: res.headers()['content-type'] ?? 'application/octet-stream' }))
+    // Serve even the first (recording) hit via the local stream: fulfilling
+    // huge bodies through the DevTools protocol kills the browser.
+    const port = await ensureServer()
+    return route.fulfill({ status: 302, headers: { location: `http://127.0.0.1:${port}/${key}` } })
+  }
+  return route.fulfill({ status: res.status(), contentType: res.headers()['content-type'] ?? 'application/octet-stream', body })
+}
