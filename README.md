@@ -12,9 +12,7 @@
 
 ## 🎮 라이브 데모
 
-### 🇰🇷 **한국어판**
-- **GitHub Pages (기본)**: <https://sigco3111.github.io/heart-of-africa-korea/>
-- Vercel 미러: <https://heart-of-africa-remake.vercel.app/>
+### 🇰🇷 **한국어판**: <https://sigco3111.github.io/heart-of-africa-korea/>
 
 > 카이로에서 1890년으로, $250와 일지를 들고 시작해 진짜 지리 데이터 위에 그려진 아프리카 대륙을 가로지르세요. 항구 도시에서 거래하고, 각 부족의 고유 언어 체계로 방향 단서를 해독해 잃어버린 무덤을 찾으세요.
 
@@ -232,9 +230,7 @@ heart-of-africa-korea/
 
 ## 🌏 배포
 
-저장소에는 **두 개의 배포 채널**이 있습니다 — 둘 다 `main` 푸시 시 자동 빌드/배포됩니다.
-
-### 1) GitHub Pages (정식 채널)
+### GitHub Pages (정식 단일 채널)
 
 - **프로덕션 URL**: <https://sigco3111.github.io/heart-of-africa-korea/>
 - 워크플로: [`.github/workflows/deploy-pages.yml`](./.github/workflows/deploy-pages.yml) — `actions/deploy-pages@v4`
@@ -242,19 +238,11 @@ heart-of-africa-korea/
 - 트리거: `main` 푸시 + `workflow_dispatch` (수동)
 - Base path는 워크플로가 `GITHUB_PAGES_BASE=/${{ github.event.repository.name }}/`로 자동 주입 — 같은 워크플로가 upstream과 모든 fork에서 그대로 작동합니다.
 
-### 2) Vercel (미러)
-
-- **프로덕션 URL**: <https://heart-of-africa-remake.vercel.app/>
-- GitHub `sigco3111/heart-of-africa-korea` main 브랜치 push 시 자동 빌드/배포
-- 빌드 명령: `npm run build` (Vercel 자동 감지)
-- 출력 디렉토리: `dist/`
-
 ### 빌드 메트릭
 
 - 의존성 설치: ~15초 (`npm ci`, sharp/onnxruntime-node 네이티브 바이너리 포함)
 - 빌드 시간: ~700ms (Vite 8.1.3)
 - 번들 크기: ~1.4 MB three.js + 432 KB App.js (gzip 381 KB / 140 KB)
-- Vercel 빌드 머신: Washington DC (iad1), 2 cores / 8 GB
 
 > 📌 `poc` 태그가 생성되면 `/poc/` subpath도 같은 Pages 사이트에서 자동 배포됩니다 (workflow가 `v*` 태그 + `poc`를 enumerate해 각 tag별 frozen 빌드를 `dist/<tag>/`로 묶어 올립니다).
 
@@ -265,7 +253,7 @@ heart-of-africa-korea/
 원본 프로젝트: [`PatrickVonMassow/Heart-of-Africa-Remake`](https://github.com/PatrickVonMassow/Heart-of-Africa-Remake) — Patrick VonMassow 개인 프로젝트
 라이선스: **MIT** (코드만)
 
-> ⚠️ 본 한국어판 미러는 **한국어 UI 번역 및 Vercel 배포 호환성 작업**에 한정됩니다.
+> ⚠️ 본 한국어판 미러는 **한국어 UI 번역 및 GitHub Pages 배포 호환성 작업**에 한정됩니다.
 > - 게임 디자인 결정 → `design.md` (원본 SSoT)
 > - 새 키 추가 / 변경 → `src/i18n/types.ts` `Strings` 인터페이스 + en/de/ko 3개 dict 동시 갱신 필수 (parity test 강제)
 > - 한국어 번역 우선순위 → `HANDOFF_KO_FULL_TRANSLATION.md` 참조
@@ -288,7 +276,6 @@ heart-of-africa-korea/
 ## 🔗 링크
 
 - 🌐 **한국어판 라이브 (GH-Pages)**: <https://sigco3111.github.io/heart-of-africa-korea/>
-- 🪞 **한국어판 미러 (Vercel)**: <https://heart-of-africa-remake.vercel.app/>
 - 🇬🇧 **원본 PoC**: <https://patrickvonmassow.github.io/Heart-of-Africa-Remake/poc/>
 - 💻 **원본 소스**: <https://github.com/PatrickVonMassow/Heart-of-Africa-Remake>
 - 💻 **한국어 미러**: <https://github.com/sigco3111/heart-of-africa-korea>
@@ -299,8 +286,9 @@ heart-of-africa-korea/
 ## 📝 변경 이력
 
 ### 한국어 미러
-- **2026-08-11** — `sigco3111/heart-of-africa-korea` 생성, Vercel 배포, HTML lang/title 한국어화, 핵심 30+ 키 1차 교체, ko.ts 풀 번역 핸드오프 문서 작성
-- **2026-08-11** — **GH-Pages 복구**: fork repo를 public으로 전환, `actions/deploy-pages@v4` 워크플로 활성화, `vite.config.ts`/`deploy-pages.yml`에 `GITHUB_PAGES_BASE` 환경변수 도입 (fork repo 이름에 맞는 base path 자동 주입), 첫 배포 성공. **정식 배포 채널 = GH-Pages, Vercel은 미러**.
+- **2026-08-11** — `sigco3111/heart-of-africa-korea` 생성, HTML lang/title 한국어화, 핵심 30+ 키 1차 교체, ko.ts 풀 번역 핸드오프 문서 작성
+- **2026-08-11** — **GH-Pages 활성화**: fork repo를 public으로 전환, `actions/deploy-pages@v4` 워크플로 활성화, `vite.config.ts`/`deploy-pages.yml`에 `GITHUB_PAGES_BASE` 환경변수 도입 (fork repo 이름에 맞는 base path 자동 주입), 첫 배포 성공. **정식 단일 배포 채널 = GH-Pages**.
+- **2026-08-11** — **Vercel 제거**: Vercel 프로젝트(`heart-of-africa-remake`) 영구 삭제, 로컬 `.vercel/` 정리, README/HANDOFF에서 Vercel 흔적 제거. GH-Pages가 유일한 배포 채널.
 
 ### 원본
 Patrick VonMassow의 1인 프로젝트로 2026-08 기준 활발히 개발 중 (1일 10+ 커밋, 967 파일). 본 미러는 게임 디자인 결정에 일절 관여하지 않으며, 한국어 UI 작업만 수행합니다.

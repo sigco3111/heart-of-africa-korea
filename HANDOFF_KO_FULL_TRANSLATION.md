@@ -7,9 +7,9 @@
 
 ## 1. 컨텍스트 요약 (3줄)
 
-- 프로젝트: `sigco3111/heart-of-africa-korea` (PatrickVonMassow/Heart-of-Africa-Remake의 한국어화 미러, PRIVATE)
+- 프로젝트: `sigco3111/heart-of-africa-korea` (PatrickVonMassow/Heart-of-Africa-Remake의 한국어화 미러, **public**)
 - 작업 위치: `~/work/heart-of-africa-remake/`
-- 배포: Vercel prod 라이브 — `https://heart-of-africa-remake.vercel.app/`
+- 배포: GitHub Pages — <https://sigco3111.github.io/heart-of-africa-korea/>
 - 현재 상태: **HTML lang/title 한국어화 + 30+ 핵심 키 1차 교체 완료**. 본문(저널/대화 등)은 아직 영어.
 
 ---
@@ -153,13 +153,13 @@ npm run build
 npm run test:unit -- -t i18n
 # 기대: parity.test.ts + i18n.test.ts 통과
 
-# 3. 시각 검증 — Vercel 자동 배포 후 URL
-https://heart-of-africa-remake.vercel.app/
+# 3. 시각 검증 — GH-Pages 자동 배포 후 URL
+https://sigco3111.github.io/heart-of-africa-korea/
 # 기대: <html lang="ko">, <title>아프리카의 심장>, 디버그 메뉴 F1 → 한국어 항목, 게임 내 텍스트 한국어 표시
 
-# 4. Vercel 자동 배포 확인
+# 4. GH-Pages 자동 배포 확인
 git push origin main
-# Vercel이 GitHub 연동으로 자동 prod 빌드/배포
+# deploy-pages.yml 워크플로가 main 푸시 시 자동 빌드/배포 (~1분)
 ```
 
 ### 3.6 커밋 + 푸시
@@ -171,7 +171,7 @@ git commit -m "i18n: complete Korean translation for ko.ts (P1-P3 sections)"
 git push origin main
 ```
 
-푸시 후 Vercel이 자동 빌드/배포 (1~2분). `https://heart-of-africa-remake.vercel.app/`에서 시각 확인.
+푸시 후 deploy-pages.yml이 자동 빌드/배포 (~1분). `https://sigco3111.github.io/heart-of-africa-korea/`에서 시각 확인.
 
 ---
 
@@ -226,28 +226,28 @@ git remote add upstream https://github.com/PatrickVonMassow/Heart-of-Africa-Rema
 - [ ] `npm run test:unit -- -t i18n` 통과 (parity + i18n 테스트)
 - [ ] 한국어 UI에서 마사이/팀북투/킬리만자로 등이 일관되게 표시
 - [ ] 디버그 메뉴(F1) → 언어 선택 → 한국어가 기본으로 선택됨
-- [ ] Vercel 라이브 URL에서 시각 확인 완료
+- [ ] GH-Pages 라이브 URL에서 시각 확인 완료
 - [ ] 작업물 `~/work/heart-of-africa-remake/dist/` 또는 라이브 URL에서 한글 동작 확인
-- [ ] 커밋 + 푸시 + Vercel 자동 배포 확인
+- [ ] 커밋 + 푸시 + deploy-pages.yml 자동 배포 확인
 
 ---
 
 ## 6. 환경 / 도구
 
-- Node.js ≥ 20 (권장 22, Vercel CLI 동일)
+- Node.js ≥ 20 (권장 22, GitHub Actions 러너와 동일)
 - npm (yarn/pnpm 비권장 — 원본 lockfile은 npm)
-- Vercel CLI (글로벌 설치됨: `/Users/mac/.local/bin/vercel`, 58.7.1)
 - gh CLI (GitHub 인증: sigco3111, repo scope 있음)
+- 배포 자동 트리거는 `.github/workflows/deploy-pages.yml` — 추가 CLI 불필요
 
 ---
 
 ## 7. 연락 / 인계
 
 - 작업 위치: `~/work/heart-of-africa-remake/`
-- GitHub: `sigco3111/heart-of-africa-korea` (PRIVATE, collaborator 추가 가능)
+- GitHub: `sigco3111/heart-of-africa-korea` (public, collaborator 추가 가능)
 - 원본: `PatrickVonMassow/Heart-of-Africa-Remake` (MIT 라이선스, 자유 fork 가능)
-- 배포: Vercel 자동 (GitHub push 트리거)
-- 미러/배포 URL: `https://heart-of-africa-remake.vercel.app/`
+- 배포: GitHub Pages (main push → deploy-pages.yml 자동 빌드/배포)
+- 라이브 URL: `https://sigco3111.github.io/heart-of-africa-korea/`
 
 ---
 
@@ -266,7 +266,7 @@ git remote add upstream https://github.com/PatrickVonMassow/Heart-of-Africa-Rema
 [검증]
 - npm run build: ✓ (0 errors, 693ms)
 - npm run test:unit -- -t i18n: ✓ (parity + i18n passed)
-- Vercel 라이브 URL: ✓ (https://heart-of-africa-remake.vercel.app/)
+- GH-Pages 라이브 URL: ✓ (https://sigco3111.github.io/heart-of-africa-korea/)
 
 [주요 번역 결정]
 - 마사이/Maasai, 줄루/Zulu 등 고유명사 한국어 표기 통일
