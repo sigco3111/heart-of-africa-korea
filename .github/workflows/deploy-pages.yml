@@ -49,11 +49,16 @@ jobs:
           n=0; until npm ci; do n=$((n+1)); [ "$n" -ge 3 ] && exit 1; echo "npm ci failed, retry $n after 15s"; sleep 15; done
 
       # GITHUB_ACTIONS is set on the runner, so vite.config.ts picks the
-      # /Heart-of-Africa-Remake/ base path for correct Pages asset URLs.
+      # /<repo>/ base path for correct Pages asset URLs. The explicit
+      # GITHUB_PAGES_BASE keeps the path correct regardless of the repo the
+      # workflow is running on — upstream (Heart-of-Africa-Remake) and any
+      # fork (e.g. heart-of-africa-korea) build with the same workflow.
       - name: Build
+        env:
+          GITHUB_PAGES_BASE: /${{ github.event.repository.name }}/
         run: npm run build
 
-      # Frozen playable builds of each tag under /Heart-of-Africa-Remake/<tag>/
+      # Frozen playable builds of each tag under /<repo>/<tag>/
       # (TASKS point 103): the same Pages site serves main at the root and each
       # tag at its subpath — GitHub allows one Pages site per repository, so
       # every frozen build is a subdirectory of the same artifact, rebuilt from
@@ -61,8 +66,13 @@ jobs:
       # plus `poc` (which always mirrors the NEWEST version tag, user decision
       # 24.07.2026) — version tags are enumerated DYNAMICALLY so a new release
       # needs no workflow edit. Each tag is guarded so the workflow still deploys
-      # the ones that exist while another does not.
+      # the ones that exist while another does not. The base path follows the
+      # repo name (set by GITHUB_PAGES_BASE for main; passed as --base here so
+      # each tag's worktree build also resolves its own assets correctly).
       - name: Build each tag's frozen site (all version tags + poc)
+        env:
+          REPO: ${{ github.event.repository.name }}
+          GITHUB_PAGES_BASE: /${{ github.event.repository.name }}/
         run: |
           VERSION_TAGS=$(git ls-remote --tags origin 'refs/tags/v*' | sed 's#.*refs/tags/##' | grep -vE '\^\{\}$' | sort -u)
           for tag in $VERSION_TAGS poc; do
@@ -72,7 +82,7 @@ jobs:
             fi
             git fetch --depth 1 origin tag "$tag"
             git worktree add "src-$tag" "$tag"
-            ( cd "src-$tag" && npm ci && npx tsc -b && npx vite build --base="/Heart-of-Africa-Remake/$tag/" )
+            ( cd "src-$tag" && npm ci && npx tsc -b && npx vite build --base="/$REPO/$tag/" )
             mkdir -p "dist/$tag"
             cp -r "src-$tag/dist/." "dist/$tag/"
           done

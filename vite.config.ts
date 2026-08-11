@@ -45,10 +45,13 @@ function buildInfoPlugin(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
-  // On GitHub Pages the project site is served under /<repo>/, so the CI build
-  // (GITHUB_ACTIONS is set on the runners) needs that base path; locally the
-  // dev server and preview run at the root.
-  base: process.env.GITHUB_ACTIONS ? '/Heart-of-Africa-Remake/' : '/',
+  // On GitHub Pages the project site is served under /<repo>/. GITHUB_PAGES_BASE
+  // is the explicit override (set by the deploy workflow to /<repo>/); when it
+  // is not set we fall back to the upstream project name so a bare clone still
+  // builds with the correct path. Locally (dev / preview) the base is root.
+  base:
+    process.env.GITHUB_PAGES_BASE ??
+    (process.env.GITHUB_ACTIONS ? '/Heart-of-Africa-Remake/' : '/'),
   plugins: [react(), buildInfoPlugin()],
   define: {
     // The in-game benchmark report (design.md §21.1, F8) names the SHORT commit,
