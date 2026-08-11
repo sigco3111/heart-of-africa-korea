@@ -249,7 +249,7 @@ export const useUi = create<UiState>()((set) => ({
   speechConceptLabels: false,
   traaEnabled: true,
   seasonWetnessOverride: null,
-  invertLook: true, // inverted vertical look is the shipped default (point 392)
+  invertLook: false, // FPS standard: pushing the mouse FORWARD looks UP, pulling it back looks DOWN (default flipped 2026-08-11 per user feedback — the prior flight-stick default read as inverted to most players; a debug-menu checkbox still lets anyone revert to inverted)
   labelModifier: 'ctrl', // design.md §17.8 states Ctrl; the rebind is the escape hatch
   wheelZoomEnabled: false,
   journalDnd: false,

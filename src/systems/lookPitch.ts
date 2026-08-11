@@ -37,9 +37,11 @@ export function applyPitch(pitch: number, deltaRad: number, limitDeg: number): n
  * Pitch delta for a raw mouse movement, at the same `balance.mouseSensitivity`
  * (rad/px) the yaw uses.
  *
- * `invert` is the shipped default (user 28.07.2026): pushing the mouse FORWARD
- * (movementY negative) looks DOWN, pulling it back looks UP — the flight-stick
- * convention. Uninverted, forward looks up.
+ * `invert` is OFF by default (user 28.07.2026 → flipped 11.08.2026): pushing the
+ * mouse FORWARD (movementY negative) looks UP, pulling it back looks DOWN —
+ * the FPS standard, which reads as natural to most players. The prior
+ * flight-stick default (forward looks down) is still reachable via the debug
+ * menu's `invertLook` checkbox, and the same flag governs the right-stick.
  */
 export function mousePitchDelta(movementY: number, sensitivity: number, invert: boolean): number {
   return (invert ? 1 : -1) * movementY * sensitivity

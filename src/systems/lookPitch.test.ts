@@ -65,7 +65,7 @@ describe('pitch clamp (design.md §17.5)', () => {
   })
 })
 
-describe('mouse pitch (design.md §17.5, inverted by default)', () => {
+describe('mouse pitch (design.md §17.5, uninverted by default — FPS standard)', () => {
   it('accumulates at the same sensitivity as the yaw', () => {
     // 100 px of mouse travel = 100 × mouseSensitivity radians, the exact gain
     // the horizontal look applies to movementX.

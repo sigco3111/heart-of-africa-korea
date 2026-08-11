@@ -2433,9 +2433,9 @@ export function PlaceScene() {
       if (document.pointerLockElement === el || navigator.webdriver) {
         player.current.yaw -= e.movementX * balance.mouseSensitivity
         // Vertical look (design.md §17.5, point 392) at the SAME sensitivity,
-        // inverted by default (mouse forward = look down) and clamped short of
-        // vertical. The inversion is read live so the debug checkbox takes
-        // effect without re-binding the listener.
+        // uninverted by default — FPS standard, mouse forward = look up — and
+        // clamped short of vertical. The inversion is read live so the debug
+        // checkbox takes effect without re-binding the listener.
         player.current.pitch = applyPitch(
           player.current.pitch,
           mousePitchDelta(e.movementY, balance.mouseSensitivity, useUi.getState().invertLook),
