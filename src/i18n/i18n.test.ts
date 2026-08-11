@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { de } from './de'
 import { en } from './en'
+import { ko } from './ko'
 import { resolveText, getStrings, useLocale, DICTIONARIES, LANGUAGES } from './index'
 import { stripVoiceMarkup } from '../journal/voiceMarkup'
 import { CULTURAL_LANDMARKS, NATURAL_SITES } from '../world/data/landmarks'
@@ -33,10 +34,12 @@ describe('resolveText (language-neutral journal entries)', () => {
 })
 
 describe('language runtime (design.md §17)', () => {
-  it('defaults to English and exposes both dictionaries', () => {
-    expect(useLocale.getState().lang).toBe('en')
-    expect(getStrings()).toBe(en)
-    expect(LANGUAGES.sort()).toEqual(['de', 'en'])
+  it('defaults to Korean on the Korean mirror and exposes all dictionaries', () => {
+    // The Korean mirror ships Korean as the player-facing default (see
+    // src/i18n/index.ts). The runtime test stays in lockstep.
+    expect(useLocale.getState().lang).toBe('ko')
+    expect(getStrings()).toBe(ko)
+    expect(LANGUAGES.sort()).toEqual(['de', 'en', 'ko'])
     expect(DICTIONARIES.de).toBe(de)
   })
 
@@ -45,7 +48,7 @@ describe('language runtime (design.md §17)', () => {
       useLocale.getState().setLang('de')
       expect(getStrings()).toBe(de)
     } finally {
-      useLocale.getState().setLang('en')
+      useLocale.getState().setLang('ko')
     }
   })
 
