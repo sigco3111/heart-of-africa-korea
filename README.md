@@ -1,247 +1,289 @@
-<img width="1168" height="784" alt="The Heart of Africa — Modern Remake" src="https://github.com/user-attachments/assets/07cc05d9-7a8d-427c-88a7-adbd0ea372cf" />
+<img width="1168" height="784" alt="아프리카의 심장 — 모던 리메이크" src="https://github.com/user-attachments/assets/07cc05d9-7a8d-427c-88a7-adbd0ea372cf" />
 
-# The Heart of Africa — Modern Remake
+# 🌍 아프리카의 심장 — 모던 리메이크 (한국어판)
 
-A single-player 3D remake of the 1985 exploration classic *The Heart of
-Africa* — Ozark Softscape's follow-up to *The Seven Cities of Gold* (1984) —
-built as a web application. You start in Cairo in 1890 with $250 and a journal,
-and travel across a geographically authentic Africa in search of a lost tomb:
-trading in port cities and decoding direction hints given in the regions' own language system.
+> **1985년 클래식 탐험 게임 *The Heart of Africa* 의 3D 웹 리메이크 — 한국어 인터페이스 버전**
+>
+> 원작: Ozark Softscape의 *The Seven Cities of Gold* (1984) 후속작
+> 미러 소스: [`PatrickVonMassow/Heart-of-Africa-Remake`](https://github.com/PatrickVonMassow/Heart-of-Africa-Remake) (MIT 라이선스)
+> 한국어 미러: [`sigco3111/heart-of-africa-korea`](https://github.com/sigco3111/heart-of-africa-korea) (PRIVATE)
 
-If you remember *The Seven Cities of Gold*, you know the DNA: the same design
-team, and the same loop of walking into an unmapped continent, watching the map
-fill itself in behind you, and getting along — or not — with the peoples who
-already live there. Where that game had the Americas, this one has Africa.
+---
 
-PoC playable directly in the browser at:  
-<https://patrickvonmassow.github.io/Heart-of-Africa-Remake/poc/>
+## 🎮 라이브 데모
 
-## Screenshots
+### 🇰🇷 **한국어판**: <https://heart-of-africa-remake.vercel.app/>
+
+> 카이로에서 1890년으로, $250와 일지를 들고 시작해 진짜 지리 데이터 위에 그려진 아프리카 대륙을 가로지르세요. 항구 도시에서 거래하고, 각 부족의 고유 언어 체계로 방향 단서를 해독해 잃어버린 무덤을 찾으세요.
+
+### 🇬🇧 원본 PoC (영어/독일어): <https://patrickvonmassow.github.io/Heart-of-Africa-Remake/poc/>
+
+---
+
+## ✨ 게임 특징
+
+### 🗺️ 살아있는 세계
+- **1890년 실측 지리** — 열 개 항구 도시, 22개 부족, 17개 강의 실제 위치
+- **실시간 DEM 데이터** — 바이옴 기반 PBR 텍스처 스플래팅
+- **야생 동물** — 무리 이동, 포식자 사냥, 코끼리 무리, 독수리, 해안 생물
+- **계절 시스템** — 사헬 우기, 하르마탄 dust, 10월 나일강 범람, 오카방고의 7월 역류, 정상의 눈
+
+### 👥 두 시점
+- **3D 버드아이 뷰** — 대륙 횡단 시
+- **1인칭 뷰** — 정착지 내부 (절차 생성 가옥 + 주민 동선)
+- **충돌 + NPC 생활** — 주민들이 일상으로 돌아다님
+
+### 🛒 거래와 문화 접촉
+- **항구 도시** — 장비, 식량, 선물, 보물 시세
+- **시장 바자르** — 지역별 가격 차이, 대륙 횡단 차익 거래
+- **여행사** — 항구 간 연락선 운임
+- **발견 현상금** — 다음 항구에 전신 송금으로 도착
+
+### 🗣️ 언어·방향 체계
+- 각 지역의 **Nivera / koko / Katula** 체계로 힌트 제공
+- 위치·방향으로 해독 필요
+- 학습 후 언어를 알면 다음 힌트 자동 해독
+
+### ⚔️ 생존
+- 식량, canteen(물통), 건강 풀
+- 기근·발열·탈수·일사병·상처
+- 의약품·식수·휴식 회복
+- **사망과 재시작** — 체크포인트 단위로 이어하기
+
+### 📔 저널 (자동 생성 일지)
+- 모든 사건이 자동으로 기록됨
+- **읽어주기** (Kokoro TTS, 영어 음성만 지원 — 한국어는 표시만)
+- 발견·거래·대화·해독한 단서가 언어 중립으로 저장
+- 선택한 언어로 자동 재렌더링
+
+### 🎯 승리 조건
+- 지역 힌트에서 절차적으로 배치된 무덤을 삼각 측량
+- 삽으로 정확한 위치를 파면 게임 클리어
+
+---
+
+## 🖼️ 스크린샷
 
 <table>
   <tr valign="top">
     <td width="50%">
-      <a href="https://github.com/user-attachments/assets/725e8026-ae21-4ce2-94fd-c60f29f0a42d"><img src="https://github.com/user-attachments/assets/725e8026-ae21-4ce2-94fd-c60f29f0a42d" alt="Inside a village" width="100%"></a><br>
-      <strong>Village:</strong> Procedurally varied dwellings, inhabitants going about their routines.
+      <a href="https://github.com/user-attachments/assets/725e8026-ae21-4ce2-94fd-c60f29f0a42d"><img src="https://github.com/user-attachments/assets/725e8026-ae21-4ce2-94fd-c60f29f0a42d" alt="마을 내부" width="100%"></a><br>
+      <strong>마을:</strong> 절차 생성 가옥, 주민 동선, NPC 생활.
     </td>
     <td width="50%">
-      <a href="https://github.com/user-attachments/assets/d7e2f702-618d-4217-9713-1be15f006343"><img src="https://github.com/user-attachments/assets/d7e2f702-618d-4217-9713-1be15f006343" alt="Inside a port city" width="100%"></a><br>
-      <strong>Port city:</strong> Trade, equipment, gifts and treasure prices.
+      <a href="https://github.com/user-attachments/assets/d7e2f702-618d-4217-9713-1be15f006343"><img src="https://github.com/user-attachments/assets/d7e2f702-618d-4217-9713-1be15f006343" alt="항구 도시 내부" width="100%"></a><br>
+      <strong>항구 도시:</strong> 거래, 장비, 선물, 보물 시세.
     </td>
   </tr>
   <tr valign="top">
     <td width="50%">
-      <a href="https://github.com/user-attachments/assets/e715be9f-f3db-4376-b781-360d1297c75e"><img src="https://github.com/user-attachments/assets/e715be9f-f3db-4376-b781-360d1297c75e" alt="Coastal dunes seen from the travel view" width="100%"></a><br>
-      <strong>Coastal dunes:</strong> Real elevation data, cascaded shadows, wildlife herds on the move.
+      <a href="https://github.com/user-attachments/assets/e715be9f-f3db-4376-b781-360d1297c75e"><img src="https://github.com/user-attachments/assets/e715be9f-f3db-4376-b781-360d1297c75e" alt="해안 사구" width="100%"></a><br>
+      <strong>해안 사구:</strong> 실제 고도 데이터, 캐스케이드 그림자, 야생 동물 무리.
     </td>
     <td width="50%">
-      <a href="https://github.com/user-attachments/assets/190f5e04-d365-4fde-9ab3-cb1946d6d641"><img src="https://github.com/user-attachments/assets/190f5e04-d365-4fde-9ab3-cb1946d6d641" alt="Savanna seen from the travel view" width="100%"></a><br>
-      <strong>Savanna:</strong> Biome-based terrain texturing and ambient wildlife.
+      <a href="https://github.com/user-attachments/assets/190f5e04-d365-4fde-9ab3-cb1946d6d641"><img src="https://github.com/user-attachments/assets/190f5e04-d365-4fde-9ab3-cb1946d6d641" alt="사바나" width="100%"></a><br>
+      <strong>사바나:</strong> 바이옴 기반 지형 텍스처링과 야생 동물.
     </td>
   </tr>
 </table>
 
-## Gameplay
+---
 
-- **Two perspectives.** A 3D bird's-eye view for the journey across the
-  continent, and a first-person view inside walkable settlements; the game
-  switches between them when entering or leaving a settlement.
-- **Living world.** Ten port cities, 22 peoples, 17 rivers and real landmarks
-  at their correct 1890 positions; the map is trimmed to the walkable continent
-  (the world ends at the African Red Sea coast). Settlements are densely built
-  and inhabited: procedurally varied dwellings, street networks, and villagers
-  who go about their routines, with full player/NPC collision. Ambient wildlife
-  streams with the journey — grazing herds that raise calves, predator hunts
-  with regional food webs, elephant herds, vultures and shore life.
-- **Trade and cultural contact.** Buy equipment, provisions and gifts in port
-  cities; a culturally correct gift to a village chief unlocks a hint. Bazaars
-  pay regional prices for treasure finds (continent-wide arbitrage), travel
-  agencies sell ferry passages, and discovery bounties arrive at the next port
-  as telegraphic transfers.
-- **Language and direction system.** Hints are given in the regional
-  Nivera/koko/Katula system and must be decoded into bearings and positions.
-- **Survival.** Provisions, a canteen with a draining water level, and a health
-  pool worn down by starvation, fever, dehydration, sun blindness and wounds;
-  medicine cures, fresh water and rest restore.
-- **An authentic 1890 climate and its people.** Every place runs its own
-  researched seasonal calendar — the Sahel's humid-period rains, the
-  harmattan's dust pall, the October Nile flood and the Okavango's inverted
-  July flood, snow only on the peaks that really carried it — and the
-  inhabitants answer it as the period sources describe: six peoples
-  put on a documented seasonal garment (rank-gated where the record says so),
-  while for the rest the season shows in the fire, the market and who is
-  away with the herds.
-- **Journal.** A chronicle that grows automatically with events and stores
-  decoded hints, language-neutrally, re-rendered in the selected language.
-  Every English entry can be read aloud in-browser
-  via the Kokoro TTS model, with emotional voice markup shaping the delivery.
-- **Saving and controls.** Automatic checkpoints on every port visit with a
-  tabular load overview.
-- **The goal.** A procedurally placed tomb triangulated from regional hints;
-  digging at the right spot with the shovel wins the game.
+## 🛠️ 기술 스택
 
-### Audio
+- **[Vite](https://vitejs.dev/) + React 19 + TypeScript** — 빌드 + UI
+- **[three.js](https://threejs.org/) + [@react-three/fiber](https://github.com/pmndrs/react-three-fiber) + drei** — 3D 렌더링
+- **WebGPU 렌더러 (자동 WebGL 2 폴백)** — TSL (Three Shading Language) 단일 코드 패스
+- **[zustand](https://github.com/pmndrs/zustand)** — 게임 상태
+- **[kokoro-js](https://github.com/hexgrad/kokoro)** — 브라우저 내 저널 읽어주기 (Web Worker, 영어 음성만)
+- **[oxlint](https://oxc.rs/)** — 린터
 
-Deliberately still open. The 1985 original's score is not used here in any
-form, and no placeholder music has been dropped in either — the sound design
-deserves to be decided rather than defaulted into. Ideas and collaborators
-welcome; see [Contact](#contact).
+### 렌더링 특징
+실제 DEM 지형, 바이옴 PBR 텍스처 스플래팅, 손으로 만든 1890년 수로 벡터, 물리 기반 산란 하늘 + IBL, 캐스케이드 그림자, SSAO, TRAA, 블룸, 필름 톤매핑, 파동장 + 깊이 의존 흡수 + 해안 거품이 있는 물.
 
-## Tech stack
+---
 
-- [Vite](https://vitejs.dev/) + React 19 + TypeScript
-- [three.js](https://threejs.org/) via [@react-three/fiber](https://github.com/pmndrs/react-three-fiber) and [drei](https://github.com/pmndrs/drei)
-- **WebGPU renderer with automatic WebGL 2 fallback** — shaders are written in
-  TSL (Three Shading Language) so one code path serves both backends
-- [zustand](https://github.com/pmndrs/zustand) for game state
-- [kokoro-js](https://github.com/hexgrad/kokoro) for the in-browser journal
-  read-aloud (lazy-loaded, synthesized in a Web Worker)
-- [oxlint](https://oxc.rs/) for linting
+## 🚀 빠른 시작 (로컬 개발)
 
-Rendering features include real-DEM terrain with biome-based PBR texture
-splatting, hand-authored ~1890 hydrology vectors, a physically grounded
-scattering sky with IBL, cascaded shadows, SSAO, TRAA, bloom, filmic tone
-mapping, and water with a wave field, depth-dependent absorption and shore
-foam.
+필요: Node.js ≥ 20 (권장 22)
 
-## Getting started
+```bash
+# 1. 클론
+git clone https://github.com/sigco3111/heart-of-africa-korea.git
+cd heart-of-africa-korea
 
-Requires Node.js ≥ 20.
-
-```
+# 2. 의존성
 npm install
-npm run dev        # dev server at http://localhost:5173
+
+# 3. 개발 서버
+npm run dev        # http://localhost:5173
+
+# 4. 프로덕션 빌드
+npm run build      # 타입 체크 + vite build (must pass clean)
+
+# 5. 프로덕션 미리보기
+npm run preview
 ```
 
-Other scripts:
+### 스크립트
+
+| 명령어 | 설명 |
+|---|---|
+| `npm run dev` | Vite 개발 서버 (HMR) |
+| `npm run build` | 타입 체크 + 프로덕션 빌드 |
+| `npm run preview` | 빌드 결과 로컬 서빙 |
+| `npm run lint` | oxlint |
+| `npm run test:unit` | Vitest 단위 테스트 (jsdom) |
+| `npm run test:small` | 빌드 + 린트 + Vitest + SMALL 브라우저 게이트 |
+| `npm run test:large` | 전체 회귀 (빌드 + 린트 + Vitest + 모든 브라우저 스위트) |
+| `npm test` | `npm run test:large` 동일 |
+
+---
+
+## 🌐 다국어 / 한국어화
+
+### 현재 지원 언어
+- 🇰🇷 **한국어** (한국어판 미러, **기본 부팅 언어**)
+- 🇬🇧 영어 (원본)
+- 🇩🇪 독일어 (원본)
+
+언어 전환: **F1** (디버그 메뉴) → **Language** 선택
+
+### 한국어화 작업 현황
+
+| 단계 | 상태 |
+|---|---|
+| HTML lang="ko" + title 한국어 | ✅ 완료 |
+| `src/i18n/ko.ts` 파일 구조 (Strings 계약 충족) | ✅ 완료 |
+| 기본 부팅 언어 = 한국어 | ✅ 완료 |
+| 핵심 30+ 키 1차 교체 (도시/산/폭포/메뉴) | ✅ 완료 |
+| **저널 본문 + 대화 + 디버그 메뉴 풀 번역** | 🔄 진행 중 (다른 에이전트에 핸드오프) |
+
+핸드오프 문서: [`HANDOFF_KO_FULL_TRANSLATION.md`](./HANDOFF_KO_FULL_TRANSLATION.md)
+
+### 한국어 음성 안내
+저널 읽어주기 기능은 **영어 음성(Kokoro TTS)만 지원**합니다 (디자인 의도, design.md §3). 한국어 저널은 **텍스트로 표시**되며 음성 합성은 영어로 fallback 됩니다. 한국어 음성 추가 여부는 추후 결정 과제.
+
+---
+
+## 🎮 조작법
+
+| 키 | 동작 |
+|---|---|
+| `WASD` / 화살표 | 이동 (버드아이 또는 1인칭) |
+| `Space` | 상호작용 (마을 입장, 캠프 설치 등) |
+| `F1` | 디버그 메뉴 (언어 변경 포함) |
+| `F3` | 디버그 풀 로드아웃 |
+| `F4` | 카누 토글 |
+| `F6` | 버그 리포트 (zip 다운로드) |
+| `F8` | 렌더 벤치마크 |
+| `F9` | 그래픽 품질 변경 (low / medium / high) |
+| `H` | 건강 상태 조회 |
+| `J` | 저널 열기 |
+| `M` | 지도 열기 |
+| `Esc` | 모달 닫기 / 벤치마크 중단 |
+| 마우스 드래그 | 시점 회전 |
+| 스크롤 휠 | 무기 전환 |
+
+> 📜 **탐험가의 일지**로 가는 길: 카이로(Cairo)를 출발해 항구 도시를 순회하며 거래하고, 부족의 언어 단서를 해독해 무덤 위치를 추정하세요.
+
+---
+
+## 📁 프로젝트 구조
 
 ```
-npm run build      # type-check + production build (must pass clean)
-npm run preview    # serve the production build locally
-npm run lint       # oxlint (zero errors/warnings required)
-npm audit          # zero known vulnerabilities required
-npm run test:unit  # fast Vitest layer (jsdom): logic, store, HUD components
-npm run test:small # everyday gate: Vitest + the core browser suites (no preview)
-npm test           # full (LARGE) headless regression: every suite + preview
+heart-of-africa-korea/
+├── CLAUDE.md              # 빌드 순서 (에이전트 가이드, binding)
+├── README.md              # 본 문서
+├── HANDOFF_KO_FULL_TRANSLATION.md   # ko.ts 풀 번역 핸드오프
+├── TASKS.md               # 작업 목록
+├── design.md              # 게임 디자인 결정 (SSoT)
+├── docs/                  # 분석 문서 (독일어 주석 일부 포함)
+├── index.html             # <html lang="ko">
+├── package.json
+├── vite.config.ts
+├── scripts/
+│   ├── koreanize.sh       # 한국어화 자동화 스크립트
+│   └── verify/            # Playwright 검증
+├── public/                # favicon, 보드
+└── src/
+    ├── main.tsx           # 진입점
+    ├── App.tsx
+    ├── i18n/              # 🌍 다국어 (en, de, ko)
+    │   ├── index.ts       # Lang='de'|'en'|'ko', 기본 ko
+    │   ├── types.ts       # Strings 인터페이스 (883줄)
+    │   ├── en.ts          # 영어 사전 (1159줄)
+    │   ├── de.ts          # 독일어 사전 (1171줄)
+    │   ├── ko.ts          # 한국어 사전 (1159줄) 🔄
+    │   ├── names.ts
+    │   └── *.test.ts      # parity / i18n / villages / nameCompleteness
+    ├── scenes/            # travel (여행), place (마을 내부)
+    ├── world/             # 지리·생물·언어 데이터
+    ├── systems/           # 경제·생존·AI·UI
+    ├── state/             # zustand store
+    ├── journal/           # 저널 + TTS (Web Worker)
+    ├── render/            # WebGPU / WebGL2 렌더링
+    ├── ui/                # HUD / 패널 / 디버그 메뉴
+    └── communication/     # 부족 언어·북 신호
 ```
 
-The game starts in English by default; German can be selected at runtime via
-the debug menu (F1). All player-facing text lives in `src/i18n/` — adding a
-language means adding one file.
+---
 
-## Geodata
+## 🌏 배포
 
-The terrain uses real elevation data. The runtime assets in `public/geodata/`
-are generated reproducibly (no npm dependencies) by the scripts in
-[`scripts/`](scripts/README.md):
+### Vercel (프로덕션)
+- **프로덕션 URL**: <https://heart-of-africa-remake.vercel.app/>
+- GitHub `sigco3111/heart-of-africa-korea` main 브랜치 push 시 자동 빌드/배포
+- 빌드 명령: `npm run build` (Vercel 자동 감지)
+- 출력 디렉토리: `dist/`
 
-```
-node scripts/build-geodata.mjs              # DEM from public Terrarium tiles
-node scripts/generate-terrain-textures.mjs  # tileable terrain textures (bird's-eye)
-node scripts/generate-surface-textures.mjs  # tileable settlement surfaces (first-person)
-```
+### 환경
+- 빌드 머신: Vercel Washington DC (iad1), 2 cores / 8 GB
+- 의존성 설치: ~15초
+- 빌드 시간: ~700ms (Vite 8.1.3)
+- 번들 크기: ~1.4 MB three.js + 432 KB App.js (gzip 381 KB / 140 KB)
 
-At load time the DEM is trimmed to the game world: only land connected to the
-game's own land masses is kept, so Sinai, Arabia, southern Europe, foreign
-islands and the unreachable Madagascar render as open sea
-(`src/world/redSea.ts`); `dem.png` itself stays untouched.
+---
 
-## Project structure
+## 🤝 기여
 
-```
-design.md            authoritative design document (do not modify)
-CLAUDE.md            POC scope, acceptance criteria, build rules
-scripts/             geodata preprocessing + headless verification (scripts/verify/)
-public/geodata/      generated DEM + terrain textures
-verification/        acceptance-criteria screenshot evidence
-src/
-├── config/          central balance values (runtime-tunable via debug menu)
-├── i18n/            language files (de, en) and localization runtime
-├── journal/         journal sketches, voice markup, in-browser TTS read-aloud
-├── render/          sky, water, materials, flora/fauna, post effects
-├── scenes/travel/   bird's-eye view: terrain, climate, wildlife
-├── scenes/place/    first-person view: settlements, inhabitants, collision
-├── state/           game and UI state (zustand)
-├── systems/         input, movement, events, economy, ambience
-├── ui/              HUD, status bar, journal panel, map, dialogs, debug menu
-└── world/           geography, geodata sampling, hydrology, terrain model
-```
+원본 프로젝트: [`PatrickVonMassow/Heart-of-Africa-Remake`](https://github.com/PatrickVonMassow/Heart-of-Africa-Remake) — Patrick VonMassow 개인 프로젝트
+라이선스: **MIT** (코드만)
 
-`design.md` is the authoritative design document; `CLAUDE.md` defines the POC
-scope, acceptance criteria and build rules.
+> ⚠️ 본 한국어판 미러는 **한국어 UI 번역 및 Vercel 배포 호환성 작업**에 한정됩니다.
+> - 게임 디자인 결정 → `design.md` (원본 SSoT)
+> - 새 키 추가 / 변경 → `src/i18n/types.ts` `Strings` 인터페이스 + en/de/ko 3개 dict 동시 갱신 필수 (parity test 강제)
+> - 한국어 번역 우선순위 → `HANDOFF_KO_FULL_TRANSLATION.md` 참조
 
-## Status
+기여/PR 환영: 이슈 등록 또는 `sigco3111/heart-of-africa-korea`로 PR
 
-This repository contains the **proof of concept**: the core gameplay loop is not fully developed.
+---
 
-All 32 acceptance criteria of `CLAUDE.md` §7.1 are implemented, with the
-screenshot evidence in `verification/`; the simplifications and open items that
-remain are recorded in the code (`// OPEN:`) and in `TASKS.md`.
+## 📜 라이선스 및 1985 원작 관련
 
-The full headless regression runs with `npm test` — a fast Vitest (jsdom) layer
-plus 15 Playwright browser suites; the test strategy and coverage map live in
-[`scripts/verify/README.md`](scripts/verify/README.md).
+- 본 저장소의 모든 코드/그래픽/오디오/텍스트/자산은 **처음부터 새로 작성**되었습니다. 1985 원작의 어떤 자료도 사용·추출·재배포하지 않습니다.
+- *The Heart of Africa*, *The Seven Cities of Gold* 및 관련 명칭·상표는 각 권리자의 자산입니다. 본 프로젝트는 tribute 식별 용도로만 사용하며 소유권 주장은 없습니다.
+- 본 프로젝트는 **무료, 비상업적**이며 광고·후원·결제 일체 없습니다.
+- 1890년대 아프리카와 그 부족·식민지 시대 프레이밍의 묘사는 역사적 연구 대상으로 다루며, 원작의 시대적 한계를 그대로 답습하지 않고 학술 자료에 기반해 재구성했습니다.
 
-## Credits
+원작 권리자가 본 저장소의 어떤 내용에 대해 이의가 있으시면 이슈 등록 또는 연락 주시면 즉시 조치하겠습니다.
 
-### The original game
+---
 
-*The Heart of Africa* (1985) was created by **Ozark Softscape** and published
-by **Electronic Arts**. It was the follow-up to *The Seven Cities of Gold*
-(1984).
+## 🔗 링크
 
-- **Danielle Bunten Berry** (credited on the 1985 release as Dan Bunten) — design
-  and programming
-- **David Warhol** — music and sound effects
-- **Electronic Arts** — publisher
+- 🌐 **한국어판 라이브**: <https://heart-of-africa-remake.vercel.app/>
+- 🇬🇧 **원본 PoC**: <https://patrickvonmassow.github.io/Heart-of-Africa-Remake/poc/>
+- 💻 **원본 소스**: <https://github.com/PatrickVonMassow/Heart-of-Africa-Remake>
+- 💻 **한국어 미러**: <https://github.com/sigco3111/heart-of-africa-korea>
+- 📋 **원본 이슈**: <https://github.com/PatrickVonMassow/Heart-of-Africa-Remake/issues>
 
-This remake exists because that game was worth remembering. All credit for the
-concept, the design and the original score belongs to the people above.
+---
 
-### This remake
+## 📝 변경 이력
 
-Developed by **Patrick von Massow**. Source code, assets and text in this
-repository are original work unless noted otherwise.
+### 한국어 미러
+- **2026-08-11** — `sigco3111/heart-of-africa-korea` 생성, Vercel 배포, HTML lang/title 한국어화, 핵심 30+ 키 1차 교체, ko.ts 풀 번역 핸드오프 문서 작성
 
-### Data and libraries
-
-- Elevation data derived from public **Terrarium** terrain tiles
-- Hydrology and place-name research from public-domain and openly licensed
-  period sources
-- See [Tech stack](#tech-stack) for the open-source libraries this project
-  depends on; each remains under its own license
-
-## Legal
-
-This is a **non-commercial fan project**, made as a tribute. It is not
-affiliated with, endorsed by, or connected to Electronic Arts Inc., Ozark
-Softscape, or any rights holder of the original game.
-
-- No code, graphics, audio, text or other assets from the 1985 original are
-  used, extracted or redistributed here. Everything in this repository was
-  built from scratch.
-- *The Heart of Africa*, *The Seven Cities of Gold* and all related names and
-  marks are the property of their respective owners. They are used here only to
-  identify the work this project pays tribute to — nominative use, no claim of
-  ownership implied.
-- Nothing here is sold, monetised, or offered in exchange for payment,
-  donations or advertising revenue, and there is no intention to do so.
-- Depictions of 1890s Africa, its peoples and the colonial-era framing of the
-  original are treated as historical subject matter, researched from period and
-  scholarly sources. Where the original's assumptions have not aged well, this
-  project tries to do better rather than reproduce them.
-
-If you hold rights to the original work and object to anything in this
-repository, open an issue or contact me and it will be addressed
-promptly.
-
-Own code released under the [MIT License](LICENSE). Note that this covers only
-the original work in this repository — it conveys no rights to the 1985 game.
-Anyone looking to commercialise a derivative would need to clear that with the
-rights holders of the original.
-
-## Contact
-
-Questions, corrections, period sources, or an interest in the audio side:
-open an [issue](https://github.com/PatrickVonMassow/Heart-of-Africa-Remake/issues)
-or write to <patrick.von.massow@gmail.com>.
+### 원본
+Patrick VonMassow의 1인 프로젝트로 2026-08 기준 활발히 개발 중 (1일 10+ 커밋, 967 파일). 본 미러는 게임 디자인 결정에 일절 관여하지 않으며, 한국어 UI 작업만 수행합니다.

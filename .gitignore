@@ -144,3 +144,4 @@ scripts/.tile-cache
 # they were swept in by a commit that staged everything (a0c599b) and the README
 # serves its picture from the GitHub attachment CDN, not from here.
 /cover/
+.vercel
