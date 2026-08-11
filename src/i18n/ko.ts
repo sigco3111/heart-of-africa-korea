@@ -727,103 +727,103 @@ export const ko: Strings = {
 
   journal: {
     titles: {
-      departure: 'Departure',
-      region: (p: TextParams) => `Region: ${ko.regions[p.region as keyof typeof ko.regions]}`,
-      arrival: (p: TextParams) => `Arrival in ${PLACES[p.place as string]}`,
-      portReturn: (p: TextParams) => `${PLACES[p.place as string]} Once More`,
+      departure: '출발',
+      region: (p: TextParams) => `${ko.regions[p.region as keyof typeof ko.regions]} 지역`,
+      arrival: (p: TextParams) => `${PLACES[p.place as string]} 도착`,
+      portReturn: (p: TextParams) => `${PLACES[p.place as string]}에 다시`,
       village: (p: TextParams) => PLACES[p.place as string],
-      villageReturn: (p: TextParams) => `Back in ${PLACES[p.place as string]}`,
+      villageReturn: (p: TextParams) => `${PLACES[p.place as string]}로 돌아옴`,
       monument: (p: TextParams) => PLACES[p.place as string],
-      monumentReturn: (p: TextParams) => `${PLACES[p.place as string]} Once More`,
-      audience: 'Audience with the Chief',
-      mistake: 'A Grave Mistake',
-      chiefHint: "The Chief's Words",
-      drumMessage: 'The Drums Speak',
-      rockArtefact: 'At the Foot of the Great Rock',
-      artefactGiven: 'Into the Hands of the Chief',
-      decoded: 'Deciphered!',
-      unspecific: 'Vague Murmurs',
-      giftLore: 'What the People Revere',
-      language: (p: TextParams) => `The Language of the ${ko.regions[p.region as keyof typeof ko.regions]}`,
-      victory: 'The Heart of Africa',
-      foodLow: 'Provisions Running Low',
-      foodOut: 'Provisions Exhausted',
-      dehydration: 'Thirst',
-      recovery: 'Recovery',
-      healthPoor: 'At the End of My Strength',
-      attack: 'Attacked!',
-      robbery: 'Robbers',
-      fever: 'Fever',
-      sunblind: 'Blinded by the Sun',
-      sandstorm: 'Sandstorm',
-      sweptAway: 'Swept Away',
-      mountainClimb: 'Into the Mountains Without a Rope',
-      penaltyJungle: 'Fighting Through the Jungle',
-      penaltyWater: 'Into the Water',
-      penaltyCanoeLand: 'The Canoe on Land',
-      dangerUnarmed: 'Wilds Without a Rifle',
-      dangerDesert: 'The Blaze of the Desert',
-      dangerWater: 'Crocodiles Lie in Wait',
-      dangerWetland: 'Fever in the Thicket',
-      mountainFall: 'A Fall',
+      monumentReturn: (p: TextParams) => `${PLACES[p.place as string]}에 다시`,
+      audience: '족장 접견',
+      mistake: '중대한 실수',
+      chiefHint: '족장의 말씀',
+      drumMessage: '북의 메시지',
+      rockArtefact: '큰 바위 아래에서',
+      artefactGiven: '족장의 손에',
+      decoded: '해독했다!',
+      unspecific: '모호한 중얼거림',
+      giftLore: '백성이 숭상하는 것',
+      language: (p: TextParams) => `${ko.regions[p.region as keyof typeof ko.regions]} 지역의 언어`,
+      victory: '아프리카의 심장',
+      foodLow: '식량이 바닥나다',
+      foodOut: '식량 소진',
+      dehydration: '갈증',
+      recovery: '회복',
+      healthPoor: '힘이 다하다',
+      attack: '습격을 받았다!',
+      robbery: '강도',
+      fever: '열병',
+      sunblind: '눈이 부시어',
+      sandstorm: '모래폭풍',
+      sweptAway: '물에 휩쓸림',
+      mountainClimb: '밧줄 없이 산으로',
+      penaltyJungle: '밀림을 뚫으며',
+      penaltyWater: '물 속으로',
+      penaltyCanoeLand: '육지 위의 카누',
+      dangerUnarmed: '소총 없는 야생',
+      dangerDesert: '사막의 작열',
+      dangerWater: '매복한 악어',
+      dangerWetland: '수풀의 열병',
+      mountainFall: '추락',
       landmarkDiscovered: (p: TextParams) => {
         const name = ko.landmarks[p.landmark as keyof typeof ko.landmarks]
         const titles: Record<string, string> = {
-          mountain: `${name} in Sight`,
-          falls: `The Thunder of ${name}`,
-          lake: `An Inland Sea: ${name}`,
-          grave: 'Where the Elephants Die',
-          pyramids: `The Pyramids of ${name}`,
-          'giza-pyramids': `The Great Pyramids of ${name}`,
-          'stone-city': `The Stone Walls of ${name}`,
-          'rock-churches': `The Rock Churches of ${name}`,
-          'coastal-ruins': `The Ruins of ${name}`,
-          stelae: `The Stelae of ${name}`,
-          castles: `The Castles of ${name}`,
-          'cliff-dwellings': `The Cliffs of ${name}`,
-          crater: `The Green Caldera: ${name}`,
-          volcano: `The Smoking Mountain: ${name}`,
-          delta: `A River Lost in the Sands: ${name}`,
-          wetland: `The Great Swamp: ${name}`,
+          mountain: `${name}이(가) 보인다`,
+          falls: `${name}의 울림`,
+          lake: `내륙의 바다: ${name}`,
+          grave: '코끼리가 죽는 곳',
+          pyramids: `${name}의 피라미드`,
+          'giza-pyramids': `${name}의 대피라미드`,
+          'stone-city': `${name}의 석벽`,
+          'rock-churches': `${name}의 바위 교회들`,
+          'coastal-ruins': `${name}의 유적`,
+          stelae: `${name}의 스텔라`,
+          castles: `${name}의 성`,
+          'cliff-dwellings': `${name}의 벼랑`,
+          crater: `초록의 분화구: ${name}`,
+          volcano: `연기를 뿜는 산: ${name}`,
+          delta: `모래 속으로 사라지는 강: ${name}`,
+          wetland: `거대한 습지: ${name}`,
         }
-        return titles[p.kind as string] ?? `${name} in Sight`
+        return titles[p.kind as string] ?? `${name}이(가) 보인다`
       },
-      discovery: 'A Grim Discovery',
-      deadline1: 'A Letter from the Financiers',
-      deadline2: 'The Final Warning',
-      successor: 'A New Hand',
+      discovery: '소름 끼치는 발견',
+      deadline1: '후원자로부터의 편지',
+      deadline2: '마지막 경고',
+      successor: '새로운 손',
       treasure: (p: TextParams) => {
         const name = p.treasure ? ko.treasures[p.treasure as keyof typeof ko.treasures] : undefined
-        return name ? `${name} from the Earth` : 'Ivory Among the Bones'
+        return name ? `땅속에서 나온 ${name}` : '뼈 사이의 상아'
       },
-      bounty: 'The Bounty of Discovery',
-      ferry: 'Passage by Sea',
-      valuableReaction: 'The Valuable in My Hand',
-      friend: 'An Honored Friend',
-      rescue: 'Saved by the Villagers',
-      friendSupplies: 'Guests of the Region',
-      robberyCommitted: 'A Deed Beyond Forgiving',
-      campLooted: 'The Looted Camp',
+      bounty: '발견의 보상',
+      ferry: '바다 횡단',
+      valuableReaction: '내 손의 보물',
+      friend: '존경받는 친구',
+      rescue: '마을 사람들의 구원',
+      friendSupplies: '이 지역의 손님',
+      robberyCommitted: '용서받을 수 없는 짓',
+      campLooted: '약탈당한 캠프',
     },
     start:
-      'Cairo, January 1890. [excited]Today my expedition begins.[/excited] With 250 dollars in my pocket, a bundle of trade gifts, and more hope than sense, I mean to find the Heart of Africa — [awe]the fabled tomb of the great king.[/awe] [breath][somber]May fortune walk with me.[/somber]',
+      '카이로, 1890년 1월. [excited]오늘 나의 원정이 시작된다.[/excited] 호주머니에 250달러와 한 묶음의 교역 선물, 그리고 상식보다 더 많은 희망을 안고, 나는 아프리카의 심장을 — [awe]위대한 왕의 전설적인 무덤을[/awe] — 찾아낼 것이다. [breath][somber]행운이 나와 함께 하기를.[/somber]',
     regionEntry: (p: TextParams) => {
       const texts: Record<string, string> = {
         north:
-          '[awe]The desert![pause] A sea of sand and light as far as the eye can reach.[/awe] The heat shimmers above the dunes, and yet I feel a strange exaltation. [pause]They say the peoples of the North read direction from the origin of the wind. [somber]I shall have to learn their words first.[/somber]',
+          '[awe]사막이다![pause] 눈에 닿는 끝까지 모래와 빛의 바다.[/awe] 더위가 모래 위에서 아른거리는데, 이상하게도 마음이 고양된다. [pause]북방의 백성들은 바람이 부는 쪽으로 방향을 읽는다고 한다. [somber]먼저 그들의 단어를 배워야겠다.[/somber]',
         west:
-          'Endless savanna, [awe]golden in the evening light.[/awe] Umbrella acacias stand like sentinels across the vastness, and far off the herds are moving. [excited]The West receives me with a feeling of freedom[/excited] — and a suspicion that different words for the points of the compass hold sway here.',
+          '끝없는 사바나, [awe]저녁 �살에 금빛으로 물든다.[/awe] 우산형 아카시아 나무가 광활함 위에 파수꾼처럼 서 있고, 멀리서 무리들이 이동하고 있다. [excited]서부는 나를 자유의 감정으로 맞아준다[/excited] — 그리고 이곳에서는 나침반의 네 방위를 다른 말로 부른다는 의심이 따른다.',
         central:
-          '[fear]The jungle has swallowed me whole.[/fear] Green twilight, the shrieking of birds, air so damp it settles on the chest like a wet cloth. [weary]Without a machete I can scarcely advance a step.[/weary] [breath][somber]Everything here is life,[pause] and everything is danger.[/somber]',
+          '[fear]정글이 나를 통째로 삼켰다.[/fear] 녹색 황혼, 새들의 비명, 축축한 공기가 젖은 천처럼 가슴에 내려앉는다. [weary]마체테가 없으면 한 발짝도 앞으로 나아가지 못하겠다.[/weary] [breath][somber]여기서 모든 것은 생명이며,[pause] 모든 것은 위험이다.[/somber]',
         east:
-          'Mountains and lakes so clear that the sky mirrors itself in them. [awe]In the East, snow-capped summits rise above the clouds —[pause] what a sight, in the very middle of Africa![/awe] The peoples here measure the world from places they call [emph]"Odabi"[/emph].',
+          '산과 호수가 하늘을 그대로 비추는 맑기를 가졌다. [awe]동방에서는 설산의 봉우리가 구름 위로 솟아 있다 —[pause] 아프리카 한가운데서 이런 광경이라니![/awe] 이곳의 백성들은 [emph]"Odabi"[/emph]라고 부르는 곳들을 기준으로 세상을 잰다.',
         south:
-          'The high plateau of the South. [pause]Cool, clear air after all that heat, wide grassland beneath an immense sky. The people here, so it is said, speak of seasons when they mean directions. [pause][awe]What a curious land this is.[/awe]',
+          '남방의 고원. [pause]그 모든 더위 뒤의 서늘하고 �은 공기, 끝없이 넓은 하늘 아래 드넓은 초원. 이곳의 사람들은, 듣자하니, 방향을 말하고 싶을 때 계절을 일컬은다고 한다. [pause][awe]정말 기이하고도 아름다운 땅이구나.[/awe]',
       }
       return texts[p.region as string]
     },
     portArrival: (p: TextParams) =>
-      `I have reached ${PLACES[p.place as string]}. [excited]The clamor of the harbor, the cries of the traders, the smell of salt and spices[/excited] — here I can replenish my stores and gather my strength. [pause]My notes are safely put away. [mute](Checkpoint saved)[/mute]`,
+      `${PLACES[p.place as string]}에 닿았다. [excited]항만의 소란, 상인들의 외침, 소금과 향신료의 냄새[/excited] — 여기서 식량을 보충하고 힘을 기를 수 있다. [pause]내 기록은 안전히 치웠다. [mute](체크포인트 저장됨)[/mute]`,
     // The first entry into a port (point 394): what the traveller actually sees
     // on arriving at THAT city in ~1890 — Khartoum a ruin opposite the Khalifa's
     // Omdurman, Timbuktu a mud town in the sand, Boma a bolted-together station.
@@ -831,24 +831,24 @@ export const ko: Strings = {
     portFirstVisit: (p: TextParams) => {
       const name = PLACES[p.place as string]
       const texts: Record<string, string> = {
-        cairo: `The gates of Cairo, and the din of them. [excited]Donkey-boys bawling for a fare, dragomans hawking themselves in half a dozen tongues, the covered lanes of the Muski so narrow that two laden camels stop the whole street.[/excited] [awe]Above the roofs stand the minarets of the Citadel, and beyond them a brown line of desert where the pyramids are.[/awe] [somber]English officers take their coffee in the Ezbekiyeh gardens as though the country belonged to them.[/somber]`,
-        tangier: `[awe]Tangier is white — a heap of lime-washed cubes climbing the hillside, the Kasbah and the Sultan's flag above them.[/awe] There is no quay: the steamer anchored out in the bay, Moorish boatmen rowed us through the swell and carried us the last few yards ashore on their shoulders. [pause]Outside the walls the great market spreads over the hill, grain and charcoal and country people down from the Rif. [somber]The consulates of half Europe watch one another along a single street; Morocco is still the Sultan's, and everyone here is waiting.[/somber]`,
-        khartoum: `[somber]Khartoum is a ruin.[/somber] Since the city fell and Gordon died on the palace stair, its bricks have been ferried over the water to build the Khalifa's own town at Omdurman; grass stands in the streets where the consulates were. [pause][awe]Below the point the two Niles meet — the Blue running dark and swift against the pale White — and the whole traffic of the Sudan crosses at the ferry.[/awe] [fear]I am tolerated here. That is the whole of my standing.[/fear]`,
-        'st-louis': `[awe]St. Louis lies on its long island in the river mouth, and it is the most French thing I have found in Africa:[pause] two-storeyed houses with iron balconies, streets laid out with a ruler, the tricolour over the governor's residence.[/awe] A bridge of boats crosses to the mainland, and the rails run from here down to Dakar. [excited]In the sheds along the quay the whole gum of the Senegal is weighed and sacked,[/excited] and the signares of the old merchant families keep house in a style I had not looked for at this latitude.`,
-        timbuktu: `[somber]Timbuktu — and I must set it down honestly: the golden city of the books is a town of grey mud.[/somber] The sand has come in among the houses, whole quarters stand empty, and the market here is a poor thing beside Jenne's. [awe]Yet the great mosques stand, Djinguereber's tower of mud and jutting timbers above every flat roof,[pause] and the salt still comes down from Taoudenni in slabs the length of a man, forty days out of the desert.[/awe] [fear]The Tuareg take their toll of the town as they please; there is no other law in it.[/fear]`,
-        lagos: `[fear]Lagos is entered over the bar,[/fear] and the bar nearly had us: the steamer lay off in the swell and surf-boats brought us through the broken water with the Kru men singing the stroke. [pause][awe]Behind it the lagoon opens out as calm as a mill pond, and the town lies along it — the British flag, roofs of corrugated iron, and a whole quarter built by the freedmen home from Bahia, with shutters and stucco out of Pernambuco.[/awe] [somber]Everything here smells of palm oil, and everything here is reckoned in puncheons of it.[/somber]`,
-        boma: `[somber]Boma is not a city; it is a station.[/somber] A row of iron houses shipped out in pieces and bolted together on the bank, a flagstaff with the blue banner and its gold star, and the mangrove crowding up to the clearing on either hand. [pause][awe]The Congo goes past a good two leagues wide, brown and silent, and the sea is still sixty miles down it.[/awe] [fear]In the sheds the ivory lies stacked like cordwood, and nobody says aloud what it cost to bring down.[/fear] [weary]The fever has thinned the staff here; I am warned not to sleep near the water.[/weary]`,
+        cairo: `카이로의 성문, 그리고 그곳의 소란. [excited]나귀를 모는 아이들이 요금을 외치고, 드라고맨들이 여섯 개나 되는 말로 자기를 팔자고 소리를 지르며, 무스키의 지붕 덮인 골목은 너무 좁아서 짐을 단 낙타 두 마리가 온 거리를 막아버린다.[/excited] [awe]지붕 너머로 시타델의 미나aret들이 서 있고, 그 너머엔 피라미드가 있는 사막의 갈색 선이 보인다.[/awe] [somber]영국 장교들은 마치 이 나라가 자기네 것이라도 된다는 듯 에즈베키예 정원에서 커피를 마신다.[/somber]`,
+        tangier: `[awe]탕헤르는 희다 — 언덕을 타고 오르는 석회가 바른 입방체의 더미, 그 위 카스바와 술탄의 깃발.[/awe] 부두는 없다: 증기선이 만 바깥에 닻을 놓고, 무어인 보트꾼들이 파도를 저어 우리를 데려다 해안 마지막 몇 야드는 어깨에 메고 내렸다. [pause]성벽 바깥의 큰 시장이 언덕 위에 펼쳐진다, 곡물과 숯, 그리고 리프에서 내려온 시골 사람들. [somber]유럽 절반의 영사관들이 한 거리를 따라 서로를 지켜보고 있다; 모로코는 아직 술탄의 것이고, 여기서 모든 사람은 기다리고 있다.[/somber]`,
+        khartoum: `[somber]하르툼은 폐허다.[/somber] 도시가 함락되고 고든이 궁전 계단에서 죽은 뒤로, 그의 벽돌들은 물 건너 할리파 자신의 도시 움두르만을 짓는 데 쓰였다; 영사관이 있던 자리의 거리에는 풀이 자란다. [pause][awe]두 나일 강이 만나는 곳 아래로 — 짙고 빠른 청나일강이 엷은 백나일강을 거슬러 흐르고 — 수단의 모든 교통이 그 나루에서 건너간다.[/awe] [fear]나는 여기서 용인될 뿐이다. 그게 내 처지의 전부다.[/fear]`,
+        'st-louis': `[awe]세인트루이스는 강어귀의 긴 섬 위에 있으며, 내가 아프리카에서 본 것 중 가장 프랑스적이다:[pause] 철제 발코니가 있는 두 층집, 자로 그은 거리, 주지사 관저의 삼색기.[/awe] 배로 만든 다리가 본토까지 이어지고, 그 길은 여기서 다카르까지 이어진다. [excited]부두의 격납고에서는 세네갈의 검은 고무가 전부 달고 부대져,[/excited] 구 무역상 가문의 시냐르들이 이 위도에서 기대하지 않던 수준으로 살림을 차린다.`,
+        timbuktu: `[somber]팀북투 — 정직하게 적어두겠다: 책의 금빛 도시는 회색 진�의 마을이다.[/somber] 모래가 집 사이로 들어왔고, 통째로 빈 구역이 있으며, 이곳 시장은 제네의 그것에 비하면 초라하다. [awe]그러나 위대한 모스크들은 여전히 서 있다, 진흙과 튀어나온 나무로 된 징그레베르의 탑이 모든 평평한 지붕 위로,[pause] 그리고 소금은 타우데니에서 여전히 사람을 한 명 길이로 쪼갠 덩어리로 내려온다, 사막에서 쉰 일의 여정을 지나.[/awe] [fear]투아레그가 원하는 대로 그 마을의 값을 가져간다; 다른 법은 거기 없다.[/fear]`,
+        lagos: `[fear]라고스는 해안 모래톱 너머로 들어간다,[/fear] 그 모래톱이 거의 우리를 잡을 뻔했다: 증기선이 물결 속에 멈춰 있고, 파도 보트가 우리를 너울터는 물 너머로 데려갔고, 크루 사람들이 노를 짓는 박자를 불렀다. [pause][awe]그 뒤로 석호가 물레방아 같은 고요함으로 펼쳐지고, 그 위에 마을이 자리한다 — 영국 깃발, 골판지 철 지붕, 그리고 바히아에서 돌아온 해방 노예들이 페르남부쿠의 셔터와 회반죽으로 지은 온통 한 구역.[/awe] [somber]여기서는 모든 것이 팜유 냄새를 풍기고, 모든 것이 팜유 통으로 환산된다.[/somber]`,
+        boma: `[somber]보마는 도시가 아니다; 그것은 주둔소다.[/somber] 해안으로 조각조각 보내진 뒤 그 자리에서 볼트로 조여 만든 철제 가옥들, 파란 기와 금색 별의 기수가 �힌 깃대, 양쪽의 빈터로 다가오는 맹그로브. [pause][awe]콩고 강이 두 리 길이로 넓고 갈고 조용히 흘러가며, 바다는 아직도 그 아래로 60마일이다.[/awe] [fear]격납고에는 상아가 장작처럼 쌓여 있고, 그것을 데려오기 위해 무엇이 들었는지 아무도 소리 내어 말하지 않는다.[/fear] [weary]열병이这里的 직원들을 앓아지게 했다; 물가 근처에서 자지 말라는 경고를 들었다.[/weary]`,
         berbera:
           p.situation === 'deserted'
-            ? `[somber]Berbera in the hot months is a name on a shore.[/somber] The mat town of the fair has been carried away bundle by bundle on the camels that brought it; there remain a few stone houses, the wells, and the burnt ground where twenty thousand people camped the winter through. [fear]A man at the well told me quite calmly that the lions come down to drink there now.[/fear] [weary]The karif comes off the hills like a breath from an oven, and what trade there is happens in the shade and half in a whisper.[/weary]`
-            : `[excited]Berbera in its season is a city of matting.[/excited] Thousands of huts of mats and boughs have gone up along the shore, and the caravans are in from the Ogaden and from Harar — camels by the hundred, sheep in flocks that cover the beach, hides, gum, ostrich feathers, coffee in plaited baskets. [awe]Dhows lie out in the roads waiting on the wind for Aden.[/awe] [somber]Not a soul here believes any of it is permanent, and they are right.[/somber]`,
-        zanzibar: `[awe]Zanzibar is smelled before it is seen — cloves, on the wind, a good way out.[/awe] The harbour is a forest of dhow masts; the Sultan's palace and the great new house of wonders stand along the front with their tiers of iron balconies, and behind them the stone town closes into lanes where two men can barely pass, every door carved and studded like a strong-box. [pause]Here the caravans of the whole mainland are fitted out — porters, cloth, beads, coils of wire — and every consul on this ocean keeps his agent. [somber]The market where men were sold has been shut these seventeen years; the trade itself has only moved inland.[/somber]`,
-        capetown: `[awe]Table Mountain stands over the town like a wall with its cloth laid out on it,[/awe] and after the Africa I have come through, Cape Town is a shock: gas lamps, oak avenues, a dock full of mail steamers, and Adderley Street talking of nothing but diamonds and the new gold on the Rand. [pause]Above the town the Malay quarter keeps its own hours and its own call to prayer. [somber]The rails run from here to Kimberley and further every year; what is settled in this street is felt a thousand miles north of it.[/somber]`,
+            ? `[somber]더운 계절의 베르베라는 해안 위의 이름이다.[/somber] 박의 막 마을은 그것을 가져온 낙타들에 등에 한 묶음씩 나르며 떠났다; 남은 것은 몇 개의 석조 가옥, 우물, 그리고 한겨울 내내 이만 명이나 캠프를 친 그 � 빈 마른 땅이다. [fear]우물가의 한 남자가 아주 침착하게, 지금은 사자들이 물을 마시러 내려온다고 내게 말했다.[/fear] [weary]카리프가 산에서 오븐의 숨결처럼 내려오고, 이 곳의 거래는 그늘 속, 거의 속삭임처럼 이루어진다.[/weary]`
+            : `[excited]제철의 베르베라는 매트 도시다.[/excited] 수천 개의 매트와 나뭇가지로 만든 오두막이 해안을 따라 세워졌고, 오가덴과 하라르에서 대상단이 들어왔다 — 한 백 마리씩의 낙타, 해변을 덮는 양 무리, 가죽, 고무, 타조 깃, �은 바구니의 커피. [awe]두우가 아덴을 기다리며 항구 밖의 정박지에 누워 있다.[/awe] [somber]이 곳의 누구도 그것이 영원하지 않다고 믿지 않으며, 그것이 옳다.[/somber]`,
+        zanzibar: `[awe]잔지바르는 보이기 전에 냄새로 �다 — 바람 위의 정향, 꽤 먼 바다에서.[/awe] 항구는 두우 돛대들의 숲이다; 술탄의 궁전과 경이로운 새 저택이 철제 발코니의 단으로 해안가를 따라 서 있고, 그 뒤로 돌의 도시는 두 사람이 겨우 지나가는 골목으로 닫혀 있다, 모든 문이 금고처럼 조각되고 박혀 있다. [pause]대륙 전체의 대상단이 여기서 준비된다 — 짐꾼, 천, 구슬, 철사 코일 — 그리고 이 바다의 모든 영사가 대리인을 두었다. [somber]사람들이 팔리던 시장은 17년 전에 닫혔다; 그 거래 자체는 다만 내륙으로 옮겨갔을 뿐이다.[/somber]`,
+        capetown: `[awe]테이블 산이 자신의 식탁보를 펼쳐놓은 벽처럼 마을 위에 서 있고,[/awe] 내가 지나온 아프리카의 뒤를 이어, 케이프타운은 충격이다: 가스등, 떡갈나무 가로수, 우편 증기선이 가득한 부두, 그리고 애들러리 거리는 다이아몬드와 랜드의 새 금에 관한 이야기뿐이다. [pause]마을 위의 말레이 구역은 자기 시간을, 자기 기도 호출을 지킨다. [somber]철도는 여기서 킴벌리로, 해마다 더 멀리 뻗는다; 이 거리에서 정해진 것은 천 마일 북쪽까지 닿는다.[/somber]`,
       }
       const text =
         texts[p.place as string] ??
-        `I have reached ${name}. [excited]The harbour, the cries of the traders, the smell of salt and tar[/excited] — a place to set my stores in order before going on.`
-      return `${text} [pause]My notes are safely put away. [mute](Checkpoint saved)[/mute]`
+        `${name}에 도착했다. [excited]항구, 상인들의 외침, 소금과 타르의 냄새[/excited] — 더 나아가기 전에 짐을 정리할 곳이다.`
+      return `${text} [pause]내 기록은 안전히 치웠다. [mute](체크포인트 저장됨)[/mute]`
     },
     // Re-entering a port whose situation has changed (point 394): only the
     // change is described. Berbera's fair season is the one modelled today.
@@ -856,14 +856,14 @@ export const ko: Strings = {
       const transitionKey = `${p.fromSituation as string}_${p.toSituation as string}`
       const texts: Record<string, Record<string, string>> = {
         berbera: {
-          fair_deserted: `[somber]Berbera has emptied since I stood here last.[/somber] The whole town of matting is gone — carried off bundle by bundle on the camels that brought it — and the shore where the caravans lay is bare burnt ground. [pause][fear]At the well they told me, without any particular alarm, that the lions come down to drink there in this season.[/fear]`,
-          deserted_fair: `[excited]Berbera has filled up again.[/excited] Where I walked over empty ground there stands a mile of huts of mats and boughs, camels in from the Ogaden by the hundred, and the hides and gum piled ready for the dhows to Aden. [pause][awe]It is the same shore, and I would not have known it.[/awe]`,
+          fair_deserted: `[somber]내가 마지막으로 여기 섰을 때보다 베르베라는 비었다.[/somber] 매트의 온 마을은 사라졌다 — 그것을 가져온 낙타 등에 한 묶음씩 나르고 — 대상단이 누워 있던 해안은 텅 빈 그을린 땅이다. [pause][fear]우물에서 사람들은 조금도 놀라지 않고, 이 계절에는 사자들이 물을 마시러 내려온다고 내게 말했다.[/fear]`,
+          deserted_fair: `[excited]베르베라는 다시 채워졌다.[/excited] 내가 텅 빈 땅을 걸었던 그 자리에 매트와 나뭇가지의 오두막이 한 마일이나 서 있다, 오가덴에서 한 백 마리씩의 낙타가 들어오고, 두우가 아덴으로 가져갈 가죽과 고무가 쌓여 있다. [pause][awe]같은 해안인데, 알아보지 못하겠다.[/awe]`,
         },
       }
       const text =
         texts[p.place as string]?.[transitionKey] ??
-        `[somber]${PLACES[p.place as string]} is not the town I left.[pause] What has changed here since my last visit stands plainly in the streets.[/somber]`
-      return `${text} [pause]My notes are safely put away. [mute](Checkpoint saved)[/mute]`
+        `[somber]${PLACES[p.place as string]}는 내가 떠난 도시가 아니다.[pause] 지난번 방문 이후 무엇이 변했는지 거리 위에 분명히 서 있다.[/somber]`
+      return `${text} [pause]내 기록은 안전히 치웠다. [mute](체크포인트 저장됨)[/mute]`
     },
     // Arrival at a walkable monument site (point 394; research: docs/giza-1890.md):
     // the PERIOD picture, not the modern postcard — Khufu's broken apex, Khafre's
@@ -873,12 +873,12 @@ export const ko: Strings = {
       const flood = p.situation === 'flood'
       const texts: Record<string, string> = {
         giza: flood
-          ? `[awe]The inundation is out, and the pyramids stand on an island.[/awe] From the desert edge I looked back over a sheet of brown water reaching to the palms of Cairo, the causeway across it like a dike and every village sitting up on its mound. [pause][awe]Khufu is a mountain of tawny steps with its apex broken off flat; Khafre beside it still carries a pale smooth cap of its old casing near the peak,[pause] as though a second and finer summit had been set upon the first.[/awe] [somber]Of the Sphinx only the head and a little of the breast stand clear — paws, body and enclosure lie under the sand, and the face has been noseless these many centuries.[/somber] [pause]The donkey-boys of the hotel take their fares out by boat in this season, and are none the poorer for it.`
-          : `[awe]I stood at last beneath the Great Pyramid, and no engraving prepares a man for it:[pause] a mountain of tawny steps, the apex broken off flat, the courses so deep that one must be hauled up each of them.[/awe] Khafre beside it carries a pale smooth cap of its old casing near the peak, [emph]as though a second and finer summit had been set upon the first.[/emph] [pause][somber]Of the Sphinx only the head and a little of the breast are free; the paws, the body and the whole enclosure lie under the sand, and the face has been noseless these many centuries.[/somber] [pause]Below the plateau the fields lie dry and cracked, and Cook's people ride up from the hotel on donkeys while the guides quarrel over them for backsheesh.`,
+          ? `[awe]범람이 시작되었고, 피라미드들은 섬 위에 서 있다.[/awe] 사막 가장자리에서 뒤를 돌아보니 카이로의 야자수들까지 닿는 갈색 물결의 시트, 그 위의 격벽 같은 인공제방, 그리고 모든 마을이 자기 둔덕 위에 앉아 있다. [pause][awe]쿠푸는 황갈색 계단 산인데 꼭대기가 평평히 부러져 있다; 옆의 카프레는 아직 정상 근처에 � 외장의 창백하고 매끈한 뚜껑을 쓰고 있어,[pause] 마치 두 번째, 더 정교한 정상이 첫째 위에 얹힌 것 같다.[/awe] [somber]스핑크스는 머리와 가슴 일부만 드러나 있다 — 발과 몸과 둘레는 모래 아래 묻혀 있고, 얼굴은 수 세기 동안 코가 없다.[/somber] [pause]호텔의 나귀꾼들은 이 계절에 보트로 손님을 태우러 나가고, 그것으로 손해도 보지 않는다.`
+          : `[awe]마침내 대피라미드 아래 섰다, 어떤 판화도 그에 대비해 주지 못한다:[pause] 황갈색 계단의 산, 정상은 평평하게 부러져 있고, 단이 너무 깊어 하나하나 끌려 올라가야 한다.[/awe] 옆의 카프레는 정상 가까이에 옛 외장의 창백하고 매끈한 뚜껑을 쓰고 있다, [emph] 마치 두 번째, 더 정교한 정상이 첫째 위에 얹힌 것 처럼.[/emph] [pause][somber]스핑크스는 머리와 가슴 일부만 자유롭다; 발, 몸, 둘레 전체가 모래 아래에 있고, 얼굴은 수 세기 동안 코가 없다.[/somber] [pause]고원 아래로는 논마른 갈라진 들판이 있고, Cook의 사람들은 호텔에서 나귀를 타고 올라오는 동안 안내인들이 동전 한 푼을 두고 다�다.`,
       }
       return (
         texts[p.place as string] ??
-        `[awe]I have reached ${PLACES[p.place as string]}, and stood a long while before it without writing anything down.[/awe] [pause]Some things are older than any account of them.`
+        `[awe]${PLACES[p.place as string]}에 도착했다, 그리고 한참을 그것 앞에 서서 한 글자도 적지 못했다.[/awe] [pause]어떤 것들은 어떤 기록보다 오래되었다.`
       )
     },
     // Re-entering a monument site in a changed situation (point 394).
@@ -886,13 +886,13 @@ export const ko: Strings = {
       const transitionKey = `${p.fromSituation as string}_${p.toSituation as string}`
       const texts: Record<string, Record<string, string>> = {
         giza: {
-          lowWater_flood: `[awe]I came back to Giza in the flood, and the plateau has become an island.[/awe] The cracked fields I walked over are a brown lake to the horizon, the causeway stands out of it like a dike, and the boats come up to the desert edge where the donkeys used to wait. [pause][somber]Not a stone has moved, and the whole place stands differently for the water.[/somber]`,
-          flood_lowWater: `[somber]The water has gone off the land since I was here.[/somber] Where I saw a lake between the city and the plateau there is black cracked mud going green at the edges, oxen turning at the water-wheels, and the causeway an ordinary road again. [pause][awe]The pyramids look larger over dry fields than they did over the flood — there is nothing left between them and the eye.[/awe]`,
+          lowWater_flood: `[awe]홍수기에 기자로 돌아왔다, 그리고 고원은 섬이 되었다.[/awe] 내가 걸었던 갈라진 들판은 지평선까지의 갈색 호수이고, 그 위의 인공제방은 격벽처럼 서 있고, 나귀가 기다리던 사막 끝까지 보트가 닿는다. [pause][somber]돌 하나 움직인 것은 없으나, 물 때문에 그곳의 전체 풍경이 다르게 서 있다.[/somber]`,
+          flood_lowWater: `[somber]내가 여기 있을 동안 물은 땅에서 빠져나갔다.[/somber] 도시와 고원 사이에서 호수가 보이던 자리엔 가장자리가 초록으로 변하는 검은 갈라진 진흙이 있고, 물레의 소가 돌고 있으며, 인공제방은 평범한 도로가 되었다. [pause][awe]피라미드들은 마른 들판 위에서 홍수 때보다 더 크게 보인다 — 그들과 눈 사이에 아무것도 남지 않았다.[/awe]`,
         },
       }
       return (
         texts[p.place as string]?.[transitionKey] ??
-        `[somber]I came back to ${PLACES[p.place as string]}, and the season has changed the place more than the years have.[/somber]`
+        `[somber]${PLACES[p.place as string]}로 돌아왔다, 그리고 계절이 해보다 그곳을 더 바꾸어 놓았다.[/somber]`
       )
     },
     villageFirstVisit: (p: TextParams) => {
@@ -903,40 +903,40 @@ export const ko: Strings = {
       // struck text follows Baumann's period eyewitness account (1892).
       const phase = (p.phase as string) ?? 'clean'
       const texts: Record<string, string> = {
-        tuareg: `I have reached the ${name} — a camp of the blue-veiled riders of the desert. [awe]Low tents of hide, camels couched in the sand, and men whose faces are wrapped in indigo cloth —[pause] among the Tuareg it is the men who go veiled, not the women.[/awe] Their salt caravans cross the emptiness for weeks. [somber]The chief receives strangers in the great tent.[/somber]`,
-        berbers: `I have reached the ${name}, high against the Atlas. [awe]Flat-roofed houses of stone and clay climb the hillside in terraces,[pause] walnut groves stand along the stream,[/awe] and at the looms the women weave carpets brighter than any I could carry home. The headman's house sits above the terraces.`,
-        nubians: `I have reached the ${name} on the great river. [awe]The houses are painted with bold patterns around their doors,[pause] date palms lean over the bank, and the waterwheel creaks as it lifts the Nile onto the narrow terraces.[/awe] [somber]But this is a frontier now: soldiers watch the river road south, and men speak low of the Khalifa's dominion beyond,[pause] and of the hunger year that emptied the herds not long ago.[/somber] [somber]They say the pyramids of ancient kings stand not far from here —[pause] this land is older than any of it.[/somber]`,
-        bambara: `I have reached the ${name}. [awe]Granaries of banked clay stand on stilts like great sealed jars,[pause] millet fields run to the horizon,[/awe] and over the doorways are carved antelope figures — the spirit, they tell me, that first taught men to farm. The chief's compound lies at the village heart.`,
-        hausa: `I have reached the ${name}, a walled town of the Sahel. [excited]Dye pits full of indigo steam by the gate, leatherworkers cut and stamp their famous red hides,[pause] and horsemen in quilted armor clatter through a market that outshouts the birds.[/excited]`,
-        mandinka: `I have reached the ${name}. [awe]From the shade rings the kora — twenty-one strings over a gourd —[pause] and a griot sings the lineage of kings entirely from memory.[/awe] Kola nuts pass from hand to hand in greeting; I was offered one, and took it gratefully.`,
-        fang: `I have reached the ${name}, a clearing won from the forest. [awe]Long houses walled with sheets of bark stand in ordered rows,[pause] and the carvers here shape figures of dark wood whose calm gaze, they say, guards the relics of the ancestors.[/awe] [somber]Crossbows hang ready beside the doors.[/somber]`,
-        mongo: `I have reached the ${name}, deep in the river forest. [awe]Cloth woven from raffia palm dries between the huts,[pause] fish weirs of plaited cane span the stream,[/awe] and gardens of plantain have been wrested from the jungle's edge. The elders gather by the chief's hearth.`,
-        mbuti: `I have reached the ${name}, a camp of the forest people. [awe]Dome huts bent from saplings and broad leaves,[pause] hunting nets slung between the trees, and everywhere the smell of woodsmoke and wild honey.[/awe] [somber]They read this forest as I read my maps —[pause] and far better.[/somber]`,
-        banda: `I have reached the ${name}. [awe]The ring of hammers carries from the furnaces — the smiths here draw fine iron from the ore of their hills —[pause] and by the meeting hall stand slit drums taller than a man, whose voices, they say, speak across the bush for miles.[/awe]`,
-        bambundu: `I have reached the ${name}, gathered beneath a mighty baobab. [awe]Old trade paths run from this place down to the coast,[/awe] [somber]and the elders still tell of the warrior queen who defied the Portuguese for a whole lifetime.[/somber] The chief holds court in the shade of the great tree.`,
-        lunda: `I have reached the ${name}. [awe]Courtly manners rule here:[pause] every greeting has its proper form, every rank its place on the mat.[/awe] They speak with reverence of the Mwata Yamvo, whose court lies far to the east, [pause]and crosses of copper pass through the market as money.`,
+        tuareg: `나는 ${name}에 도착했다 — 사막의 파란 베일 기수들의 캠프. [awe]가죽의 낮은 천막, 모래에 �크린 낙타, 그리고 얼굴을 쪽빛 천으로 감싼 남자들 —[pause] 투아레그에서는 베일을 쓰는 쪽이 남자이며, 여자가 아니다.[/awe] 그들의 소금 대상단은 텅 빈 사막을 몇 주씩 가로지른다. [somber]족장은 큰 천막에서 이방인을 맞는다고 한다.[/somber]`,
+        berbers: `나는 아틀라스 산기슭 높이 자리한 ${name}에 도착했다. [awe]석재와 흙의 평평 지붕 집들이 테라스로 언덕을 타고,[pause] 호숫가엔 호두나무 숲이 서 있고,[/awe] 베틀에서 여인들이 내가 집으로 가져갈 수 있는 어떤 것보다도 밝은 양탄자를 짠다. 두목의 집은 테라스 위에 자리한다.`,
+        nubians: `나는 대하岸边의 ${name}에 도착했다. [awe]문 주위에는 대담한 무늬가 칠해졌고,[pause] 대추야자가 강기슭으로 �려늘어져 있으며, 물레가 나일강의 물을 좁은 테라스로 들어올리며 끼걱거린다.[/awe] [somber]그러나 지금 이곳은 변경이다: 남쪽으로 향하는 강 길을 군인들이 지키고, 사람들은 멀리 할리파의 지배에 대해,[pause] 그리고 최근 가축을 비운 기근의 해에 대해 낮게 말한다.[/somber] [somber]고대 왕의 피라미드들이 여기서 멀지 않다고 한다 —[pause] 이 땅은 그 모든 것보다 오래되었다.[/somber]`,
+        bambara: `나는 ${name}에 도착했다. [awe]진흙을 쌓아 만든 곡물 저장고는 다리 위에서 큰 밀봉 단지처럼 서 있고,[pause] 수수밭은 지평선까지 이어지며,[/awe] 문 위에는 영양의 조각상이 새겨져 있다 — 사람들에게 농경을 처음 가르킨 영혼이라고 한다. 족장의 울타리는 마을 한가운데 있다.`,
+        hausa: `나는 사헬의 성벽 도시인 ${name}에 도착했다. [excited]쪽빛 물들이 든 염색조가 문 곁에서 김을 올리고, 가죽공들이 유명한 붉은 가죽을 재단하고 도장 찍으며,[pause] 누빈 갑�의 기마병들이 새들보다 더 시끄러운 시장을 지나간다.[/excited]`,
+        mandinka: `나는 ${name}에 도착했다. [awe]그늘 속에서 코라 — 박 위에 21개의 줄 — 울리며,[pause] 그리고 그리오는 왕의 가계를 전적으로 기억력으로 부른다.[/awe] 코라 열매가 인사 대신 손에서 손으로 전해진다; 나에게도 하나 내밀었기에, 감사히 받았다.`,
+        fang: `나는 숲을 이긴 빈터에 자리한 ${name}에 도착했다. [awe]나무껍질로 둘러싸인 긴 집들이 정돈된 줄로 서 있고,[pause] 이곳의 조각가들은 어두운 나무로, 조용한 눈길로 조상의 유물을 지킨다고 하는 인물을 새긴다.[/awe] [somber]석궁가 문 옆에 준비된 채 걸려 있다.[/somber]`,
+        mongo: `나는 강 숲 깊숙이 자리한 ${name}에 도착했다. [awe]라피아 야자로 짠 천이 오두막 사이에서 말리고,[pause] 꼬아 만든 갈대의 어망이 시냇물을 가로지르며,[/awe] 파초 과수원은 정글의 가장자리에서 빼앗은 것이다. 장로들이 족장의 화덕에 모인다.`,
+        mbuti: `나는 숲 사람들의 캠프인 ${name}에 도착했다. [awe]떡갈나무 가지와 넓은 잎으로 �은 둥근 오두막,[pause] 나무 사이에 그물을 드리워 놓고, 어디서나 나무연기와 야생 꿀의 �새.[/awe] [somber]이 사람들은 내가 내 지도를 읽듯 이 숲을 읽는다 —[pause] 그리고 훨씬 더 잘.[/somber]`,
+        banda: `나는 ${name}에 도착했다. [awe]용광로에서 망치 소리가 울려 퍼지고 — 이 곳의 대장장이들은 자기 산의 철광에서 좋은 철을 뽑는다 —[pause] 회의장 곁에는 사람 키보다 큰 슬릿 드럼이 서 있다, 그 소리는 수 마일의 밀림을 가로지른다고 한다.[/awe]`,
+        bambundu: `나는 거대한 바오밥 아래 모인 ${name}에 도착했다. [awe]고대 교역로가 이 곳에서 해안까지 이어지며,[/awe] [somber]장로들은 여전히 평생 동안 포르투갈에 맞선 무녀왕의 이야기를 전한다.[/somber] �장은 큰 나무 그늘에서 재판을 연다.`,
+        lunda: `나는 ${name}에 도착했다. [awe]예의 바른 태도가 이곳을 지배한다:[pause] 모든 인사에 그만의 형식이 있고, 모든 계급에 자리 매트가 있다.[/awe] 그들은 멀리 동쪽에 있는 궁정의 Mwata Yamvo를 경외하여 말하며, [pause]동의 구리가 시장에서 돈의 역할을 한다.`,
         maasai:
           phase === 'struck'
-            ? `I have reached the ${name} of the plains — [somber]and it is a place of sorrow. The cattle plague has gone through the kraals like a fire; behind the thorn fence the huts stand around an emptied ground.[/somber] [fear]A wasted Maasai woman swayed through our camp with a fixed stare, gathering what scraps the porters had left — the first of those terrible famine figures we would now see daily in Maasailand, living on wild honey and wild fruit, walking toward a certain death.[/fear] [somber]And yet a core of the village holds out: the elders keep their fire, and the young men stand guard over what remains, spears at rest.[/somber]`
+            ? `나는 평원의 ${name}에 도착했다 — [somber]그리고 그곳은 슬픔의 장소다. 가축 역병이 가시 울타리 사이의 마을을 불처럼 지나갔고, 그 뒤로 오두막들은 텅 빈 마당 둘레에 서 있다.[/somber] [fear]마사이족의 여윈 여인이 고정된 눈으로 우리 캠프를 지나, 짐꾼들이 남긴 찌꺼기를 줍고 있었다 — 이제 마사이 땅에서 매일 보게 될, 야생 꿀과 야생 과일로 살아 명백한 죽음으로 걸어가는 끔찍한 기근의 모습들 중 첫 번째였다.[/fear] [somber]그럼에도 마을의 중심부는 붙어 있다: 장로들이 불을 지키고, 젊은이들이 남은 것에 창을 세우고 경계를 선다.[/somber]`
             : phase === 'aftermath'
-              ? `I have reached the ${name} of the plains. [somber]The great kraals stand empty; the plague years took the herds, and with them the web of cattle-loans and kinship that held this people together.[/somber] [somber]Some have gone down to the farming peoples of the hills; those who stayed ride raids more desperate than any before, they tell me at the fire.[/somber] [awe]But the ring of huts still stands, and at dusk the young men still leap their dance — straight as arrows.[/awe]`
-              : `I have reached the ${name} of the plains. [awe]Huts of branch and earth stand in a ring behind the thorn fence, and at its heart the cattle — wealth, food and pride in one.[/awe] [somber]Yet the kraals are wider than the herds that fill them: the lung-sickness of these last years has cut deep into the stock, the elders say.[/somber] [somber]The warriors keep watch with their long spears at rest, a sheepskin over the shoulder and every inch of them ochred red with fat and clay;[pause] at dusk I saw the young men leap, straight as arrows, in their dance.[/somber]`,
-        swahili: `I have reached the ${name} by the sea. [awe]Houses of coral stone line narrow lanes, their great doors carved with vines and script,[pause] and dhows lie drawn up on the beach with their lateen sails furled.[/awe] [excited]The trade winds have made this coast a crossroads of a dozen tongues.[/excited]`,
-        somali: `I have reached the ${name}. [awe]Portable houses of bent boughs and woven mats stand ready to move with the herds,[pause] camels beyond counting kneel by the wells,[/awe] and the air carries frankincense from the hills. [somber]Their poets, I am told, carry whole wars and treaties in verse alone.[/somber]`,
+              ? `나는 평원의 ${name}에 도착했다. [somber]큰 마을들이 비어 있다; 역병의 해가 가축을 가져갔고, 그와 함께 이 백성을 묶어주던 가축 대여와 친족의 그물도 가져갔다.[/somber] [somber]어떤 이들은 언덕의 농경민에게로 내려갔다; 남은 이들은 불 곁에서 내게 말하듯, 어느 때보다 절망적인 습격을 다그친다.[/somber] [awe]그러나 오두막의 고리는 여전히 서 있고, 황혼에는 젊은이들이 여전히 그들의 춤을 뛴다 — 화살처럼 곧게.[/awe]`
+              : `나는 평원의 ${name}에 도착했다. [awe]가지와 흙의 오두막이 가시 울타리 뒤에서 고리로 서고, 그 한가운데 가축이 있다 — 부, 양식, 자존심이 한 데에.[/awe] [somber]그럼에도 마을 울타리는 그 안의 무리보다 넓다: 최근 몇 해의 폐병이 가축 깊숙이 파고들었다고 장로들은 말한다.[/somber] [somber]전사들이 긴 창을 쉬운 채로, 양가죽을 어깨에 걸치고 온몸을 기름과 흙으로 붉게 칠하여 경계를 선다;[pause] 황혼에는 젊은이들이 그들의 춤에서 화살처럼 곧게 뛰어오르는 것을 보았다.[/somber]`,
+        swahili: `나는 해변의 ${name}에 도착했다. [awe]산호석의 집들이 좁은 골목을 따라 줄지어 있고, 큰 문에는 넝쿨과 글씨가 새겨져 있으며,[pause] 두우가 늦게이 텐 세일 접은 채 해변에 끌어올려져 있다.[/awe] [excited]무역풍이 이 해안을 열두 개 혀위의 교차로로 만들었다.[/excited]`,
+        somali: `나는 ${name}에 도착했다. [awe]휘어진 가지와 직조된 매트로 만든 이동식 집이 무리와 함께 움직일 준비가 되어 있고,[pause] 셀 수 없는 낙타가 우물가에 무릎을 꿇고 있으며,[/awe] 공기에는 언덕에서 올라온 유향의 냄새가 감돈다. [somber]그들의 시인은, 듣자하니, 전쟁과 조약 전체를 혼자 시로 운반한다.[/somber]`,
         sidama:
           phase === 'aftermath'
-            ? `I have reached the ${name} in the highlands. [somber]The Evil Days lie behind this land — years when plague and locusts emptied the highland —[pause] and their traces still stand at the bare cattle pens.[/somber] [awe]But the enset groves carried the villages through, and among them they roast the red berries again into that drink that would wake the dead.[/awe] [excited]I drank three cups.[/excited]`
-            : `I have reached the ${name} in the highlands — [somber]in the midst of what they call the Evil Days: plague on the cattle, locusts on the fields, hunger over the whole highland.[/somber] [awe]That life remains here at all they owe to the groves of the enset — the false banana whose pith they pound and bury, a store against exactly such years.[/awe] [somber]Of the cattle scarcely one still stands; the homesteads trade seed for salt.[/somber]`,
-        baganda: `I have reached the ${name}. [awe]Banana groves stand in ordered rows, bark-cloth dries on frames, smooth as fine paper,[pause] and reed-fenced compounds line a swept road —[/awe] [somber]the Kabaka's kingdom keeps its order even this far from his hill.[/somber]`,
-        wayeyi: `I have reached the ${name} among the reed channels. [awe]The Wayeyi read this water like a book — poling their mokoro dugouts down passages I cannot even see,[pause] fish-traps set where the current remembers to run.[/awe] [excited]Strangest of all: the flood comes in the dry season, they tell me — the river drinks from rains that fell far away, months ago.[/excited] The elder's hut stands on the first dry ground.`,
-        bemba: `I have reached the ${name}. [awe]Their fields are won by fire: branches cut and burned, and the millet sown into the warm ash —[pause] the forest gives a harvest, then rests.[/awe] [somber]The name of the Chitimukulu, their great chief in the east, is spoken here with bowed heads.[/somber]`,
-        pedi: `I have reached the ${name}. [awe]Round huts of thatch stand about the cattle kraal, grain baskets ride on poles out of the mice's reach,[pause] and at dusk the herd boys whistle their cattle home through the dust.[/awe] The chief's hut is the greatest of the ring.`,
-        zulu: `I have reached the ${name}. [awe]Beehive huts of woven grass stand in a perfect ring around the cattle kraal,[pause] hide shields lean stacked by the gate.[/awe] [somber]The discipline of the old regiments lives on in the way the young men hold themselves.[/somber]`,
-        san: `I have reached the ${name} at the desert's edge. [awe]Shelters of bent grass, slender bows with poisoned arrows, and water stored in ostrich-egg shells buried against the drought.[/awe] [somber]On the rocks nearby are paintings of eland and hunters.[pause] I had taken these people for a world apart — yet they speak of the cattle folk to the east as neighbours,[pause] and of debts and favours between them that go back further than I could follow.[/somber]`,
+            ? `나는 고원의 ${name}에 도착했다. [somber]악한 날들은 이 땅의 뒤에 있다 — 역병과 메뚜기가 고원을 비운 해들 —[pause] 그리고 그 흔적은 아직 빈 가축 우리에 서 있다.[/somber] [awe]그러나 enset 그들이 마을들을 이끌었고, 그 사이에서 그들은 다시 죽은 자도 깨울 음료를 그 붉은 열매로 볶는다.[/awe] [excited]나는 세 잔을 마셨다.[/excited]`
+            : `나는 고원의 ${name}에 도착했다 — [somber]그들이 악한 날이라 부르는 한가운데: 가축의 역병, 들판의 메뚜기, 고원 전체의 기근.[/somber] [awe]여기에 생명이 남아 있다는 사실 자체가 그들이 enset 나무의 숲에 빚지고 있는 것이다 — 그 가짜 바나나의 속살을 찧어 묻어둠으로써 바로 그런 해에 대비한 양식이다.[/awe] [somber]가축은 거의 한 마리도 남아 있지 않다; 농장에서는 씨앗을 소금과 바꾼다.[/somber]`,
+        baganda: `나는 ${name}에 도착했다. [awe]바나나 숲이 정돈된 줄로 서고, 껍질천이 골판지처럼 매끈한 프레임에서 말리고,[pause] 갈대 울타리의 울타리가 쓸어낸 길을 따라 줄지어 있으며 —[/awe] [somber]카바카 왕국도 자기 산에서 이토록 먼 곳까지 질서를 유지한다.[/somber]`,
+        wayeyi: `나는 갈대 수로 사이의 ${name}에 도착했다. [awe]와에이족은 내가 볼 수도 없는 수로를 따라 모코로 디그아웃을 받쳐서 이 물을 책처럼 읽으며,[pause] 물살이 흐르는 줄 아는 곳에 어망을 놓는다.[/awe] [excited]가장 기이한 것은: 건기에 홍수가 온다고 그들은 말한다 — 강이 멀리, 몇 달 전에 내린 비를 마신다는 것이다.[/excited] 장로의 오두막은 첫 마른 땅 위에 서 있다.`,
+        bemba: `나는 ${name}에 도착했다. [awe]그들의 밭은 불로 얻는다: 가지를 잘라 태우고, 따뜻한 재 속에 수수를 뿌린다 —[pause] 숲은 한 번 수확을 주고, 쉬어준다.[/awe] [somber]동쪽의 위대한 족장 Chitimukulu의 이름은 이곳에서 고개를 숙이며 일컬어진다.[/somber]`,
+        pedi: `나는 ${name}에 도착했다. [awe]지푸라기의 둥근 오두막들이 가축 우리 둘레에 서고, 곡식 바구니는 쥐의 손이 닿지 못하게 기둥 위에 얹혀 있으며,[pause] 황혼에는 목동들이 먼지를 지나 가축을 불러 모은다.[/awe] 족장의 오두막이 그 고리에서 가장 크다.`,
+        zulu: `나는 ${name}에 도착했다. [awe]풀로 엮은 벌집 모양의 오두막이 가축 우리의 둘레를 완벽한 고리로 두르고,[pause] 가죽 방패가 문 곁에 기대어 쌓여 있다.[/awe] [somber]옛 연대의 단속은 젊은이들이 자신을 가누는 방식 안에 여전히 살아 있다.[/somber]`,
+        san: `나는 사막 가장자리의 ${name}에 도착했다. [awe]휘어진 풀로 만든 은신처, 독을 묻힌 화살이 꽂힌 가느다란 활, 그리고 가뭄을 대비하여 타조알 속에 묻어 둔 물.[/awe] [somber]근처 바위에는 영양과 사냥꾼의 그림이 있다.[pause] 나는 이들을 다른 세상 사람으로 여겼었다 — 그러나 동쪽의 가축 백성을 이웃으로,[pause] 내가 따라잡을 수 없을 만큼 오래된 채무와 호의들을 말하고 있다.[/somber]`,
       }
       return (
         texts[p.people as string] ??
-        `I have reached the ${name}. Simple huts of clay and reed huddle close to the water, and children run out to meet me, [pause]full of curiosity. The chief resides in the great hut at the center of the village. [somber]If I can win his goodwill,[pause] perhaps he will show me the way.[/somber]`
+        `나는 ${name}에 도착했다. 진흙과 갈대의 단순한 오두막이 물가에 바짝 붙어 있고, 아이들이 호기심 가득히 달려와 나를 맞으며, [pause]마을 한가운데 큰 오두막에 족장이 살고 있다. [somber]그의 호감을 얻을 수 있다면,[pause] 그가 길도 알려줄 것이다.[/somber]`
       )
     },
     // Return vignette (point 170): the situation CHANGED since the last visit —
@@ -946,37 +946,37 @@ export const ko: Strings = {
       const transitionKey = `${p.fromPhase as string}_${p.toPhase as string}`
       const texts: Record<string, Record<string, string>> = {
         maasai: {
-          preDamaged_struck: `[fear]I came back to find the kraals empty.[/fear] Where cattle still stood last year — [somber]thinned, but alive[/somber] — there is nothing now but trodden earth. [pause] A wasted woman was gathering pods from the ground and looked straight through me; they say she lives on wild honey and is walking toward a certain death. [breath] Only the elders at their fire and the young men on guard still hold a remnant of the old order.`,
-          struck_aftermath: `[somber]The famine I witnessed here has moved on — and taken half the people with it.[/somber] The great kraals stand open and silent; with the herds went the web of cattle-loans and kinship that bound these people together. [pause] Some have gone to the farming peoples in the hills; those who stayed ride raids more desperate than any I had heard of. [breath] And yet the ring of huts still stands, [emph]and the young men still leap their dance.[/emph]`,
-          preDamaged_aftermath: `[fear]I came back and scarcely knew the place.[/fear] In the years I was away the plague went through these kraals [somber]like a fire[/somber]: the cattle I once watched at dusk are gone to the last head, and with them the web of cattle-loans and kinship that held this people together. [pause] Some have gone off to the farming peoples of the hills; those who remain ride desperate raids. [breath] Only the ring of huts still stands, [weary]and at evening the young men still leap their dance — thinner than I remember, but unbroken.[/weary]`,
+          preDamaged_struck: `[fear]돌아왔더니 마을이 비어 있었다.[/fear] 작년에 가축이 아직 서 있던 자리 — [somber]얇아지긴 했으나 살아 있던[/somber] — 이제는 밟힌 땅만 남았다. [pause] 여윈 여인이 땅에서 꼬투리를 줍고 있었고, 나를 곧장 지나쳤다; 야생 꿀로 살며 명백한 죽음으로 걸어간다고 한다. [breath] 장로들의 불과 경계의 젊은이들만이 옛 질서의 일부를 붙들고 있을 뿐이다.`,
+          struck_aftermath: `[somber]내가 여기서 목격했던 기근은 자취를 감추었다 — 그리고 그와 함께 백성의 절반도.[/somber] 큰 마을이 열리고 고요해졌다; 무리가 떠나자, 그들을 묶어주던 가축 대여와 친족의 그물도 떠났다. [pause] 어떤 이들은 언덕의 농경민에게로 갔다; 남은 이들은 내가 듣던 어느 것보다 절망적인 습격을 다그친다. [breath] 그러나 오두막의 고리는 여전히 서 있다, [emph]그리고 젊은이들은 여전히 그들의 춤을 뛴다.[/emph]`,
+          preDamaged_aftermath: `[fear]돌아와서 그 자리를 거의 알아보지 못했다.[/fear] 내가 떠난 해 동안 역병이 이 마을을 [somber]불처럼[/somber] 지나갔다: 내가 황혼에 지켜보던 가축이 마지막 한 마리까지 사라졌고, 그와 함께 그들을 묶어주던 가축 대여와 친족의 그물도. [pause] 어떤 이들은 언덕의 농경민에게로 떠났고; 남은 이들은 절망적인 습격을 다그친다. [breath] 오두막의 고리만이 여전히 서 있다, [weary]그리고 저녁에는 젊은이들이 여전히 그들의 춤을 뛴다 — 내가 기억하던 것보다 야윈, 그러나 꺾이지 않았다.[/weary]`,
         },
         sidama: {
-          struck_aftermath: `[breath] I came back scarcely daring to hope — [somber]but the Evil Days lie behind them now.[/somber] The cattle pens still stand almost bare, mute witnesses to what I saw here; yet the enset groves carried them through the hunger. [pause] Today they roast the red coffee-berries again, [emph]a drink that would wake the dead,[/emph] and they offered me a cup as in better times.`,
+          struck_aftermath: `[breath] 거의 희망을 품지 못하고 돌아왔다 — [somber]그러나 악한 날들은 이제 그들의 뒤에 있다.[/somber] 가축 우리가 거의 빈 채로 아직 서 있다, 내가 여기서 본 것의 �묵한 증인으로; 그럼에도 enset 숲이 그들을 기근 속에서 이끌었다. [pause] 오늘 그들은 다시 붉은 커피 열매를 볶고 있고, [emph]죽은 자도 깨울 음료,[/emph] 그들은 나에게 좋은 시절처럼 한 잔을 내밀었다.`,
         },
       }
       return (
         texts[p.people as string]?.[transitionKey] ??
-        `[somber]I came back, and the place is not the one I left.[pause] What has happened here since my last visit stands unspoken in every face.[/somber]`
+        `[somber]돌아왔더니, 그곳은 내가 떠난 곳이 아니다.[pause] 지난번 방문 이후 여기서 벌어진 일은 모든 얼굴 속에 말없이 서 있다.[/somber]`
       )
     },
     giftRevered: (p: TextParams) =>
-      `I presented my gift to the chief of the ${PEOPLES[p.people as string]}. [excited]His eyes lit up —[pause] I have found the very thing his people revere![/excited] He bowed his head and bade me welcome. [pause][excited]My standing here grows.[/excited]`,
+      `${PEOPLES[p.people as string]}의 족장에게 내 선물을 내밀었다. [excited]그의 눈이 빛났다 —[pause] 내가 그의 백성이 숭상하는 바로 그것을 가져온 것이다![/excited] 그는 고개를 숙이며 나를 맞아들였다. [pause][excited]여기서 내 처지가 자라난다.[/excited]`,
     giftNeutral:
-      'The chief accepted my gift with a polite nod. [somber]No light came into his eyes —[pause] it was not, I think, what his people hold dear.[/somber] [pause]But a beginning has been made.',
+      '족장이 내 선물을 정중한 고개로 받았다. [somber]그의 눈에 빛은 없었다 —[pause] 그가 사랑하는 것은, 내가 보기에, 이것이 아니다.[/somber] [pause]그렇지만 시작은 된 것이다.',
     giftRejected: (p: TextParams) =>
-      `[fear]A grave mistake![/fear] No sooner had the chief of the ${PEOPLES[p.people as string]} laid eyes on my gift than his face darkened. [somber]What I offered counts among his people as an ill omen.[pause] I was led out without a word.[/somber] [breath][weary]It will take time to wear down this mistrust.[/weary]`,
+      `[fear]심각한 실수다![/fear] ${PEOPLES[p.people as string]}의 족장이 내 선물을 본 순간 그의 얼굴이 어두워졌다. [somber]내가 내민 것은 그의 백성에게는 흉조다.[pause] 한마디도 없이 나는 끌려 나왔다.[/somber] [breath][weary]이 불신을 녹이는 데는 시간이 걸릴 것이다.[/weary]`,
     languageLesson: (p: TextParams) => {
       const texts: Record<string, string> = {
         north:
-          'An old man by the fire spoke with me at length, with hands as much as words. He named the winds: [emph]"Nivera"[/emph] where the cold night wind is born — toward midnight —, "Chamsina" for the hot breath of noon, "Levantra" for the morning, "Gharbia" for the evening. [breath][excited]Now I understand:[pause] the North reads its directions from the origin of the wind, and [emph]"Nivera" means north![/emph][/excited]',
+          '불 곁의 노인이 한참을, 말만큼이나 손을 써서 내게 말했다. 그는 바람에 이름을 붙였다: [emph]"Nivera"[/emph] — 차가운 밤바람이 태어나는 쪽, 자정 쪽 — , "Chamsina"는 정오의 뜨거운 숨결, "Levantra"는 아침, "Gharbia"는 저녁. [breath][excited]이제 알겠다:[pause] 북방은 바람이 부는 쪽으로 방향을 읽고, [emph]"Nivera"는 북쪽을 뜻한다![/emph][/excited]',
         west:
-          'An elder drew four marks into the dust and spoke slowly: [emph]"koko"[/emph] toward midnight, [emph]"Katula"[/emph] toward the sunrise, "Phuthswama" toward noon, "Mimbumi" toward the sunset. [breath][excited]The words of the West are mine now:[pause] koko is north, Katula is east![/excited]',
+          '장로가 네 개의 표시를 먼지에 그리고 천천히 말했다: [emph]"koko"[/emph] 자정 쪽, [emph]"Katula"[/emph] 해돋이 쪽, "Phuthswama" 정오 쪽, "Mimbumi" 해넘이 쪽. [breath][excited]서부의 단어가 이제 내 것이다:[pause] koko는 북쪽, Katula는 동쪽![/excited]',
         central:
-          'By the fire an elder kept pointing at the great river, which his people call [emph]"Utomba"[/emph] — the Mongdamara. Everything lies "wa-Utomba" or "ka-Utomba": away from the river or toward it, "lem-Utomba" toward the sunrise side, "mos-Utomba" toward the sunset. [breath][excited]The forest measures the world from its river![/excited]',
+          '불 곁에서 장로가 큰 강을 가리키며 말을 이었다, 그 강을 그 백성은 [emph]"Utomba"[/emph] — Mongdamara — 라고 부른다. 모든 것은 "wa-Utomba" 혹은 "ka-Utomba": 강에서 멀거나 강 쪽이거나, "lem-Utomba"는 해돋이 쪽, "mos-Utomba"는 해넘이 쪽. [breath][excited]정글은 그 강을 기준으로 세상을 잰다![/excited]',
         east:
-          'An old herdsman raised his staff toward the shining mountain his people call [emph]"Odabi"[/emph] — the Unumpara. From it flow the directions: [emph]"Relolo"[/emph] beyond it toward midnight, "Dethamee" toward noon, "Salewa" toward the sunrise, "Munjori" toward the sunset. [breath][excited]The East measures the world from the holy mountain![/excited]',
+          '�은 목동이 자기 백성이 [emph]"Odabi"[/emph] — Unumpara — 라고 부르는 빛나는 산 쪽으로 지팡이를 들었다. 그 곳에서 방향이 흐른다: [emph]"Relolo"[/emph] 산 너머 자정 쪽, "Dethamee" 정오 쪽, "Salewa" 해돋이 쪽, "Munjori" 해넘이 쪽. [breath][excited]동방은 거룩한 산에서 세상을 잰다![/excited]',
         south:
-          'An elder woman laughed at my compass and pointed at the sky: her people name the directions after the seasons — [emph]toward summer[/emph] is toward midnight, toward winter is noon, spring is the sunrise, autumn the sunset. [breath][excited]What a curious, beautiful way to carry the world![/excited]',
+          '장로 여인이 내 나침반을 보고 하늘을 가리켰다: 그녀의 백성은 방향을 계절의 이름으로 부른다 — [emph]여름 쪽[/emph]은 자정 쪽, 겨울 쪽은 정오 쪽, 봄은 해돋이, 가을은 해넘이. [breath][excited]세상을 들고 다니는 참으로 기이하고 아름다운 방식이구나![/excited]',
       }
       return texts[p.region as string]
     },
@@ -985,176 +985,176 @@ export const ko: Strings = {
       const w = DIRECTION_WORDS[regionId as keyof typeof DIRECTION_WORDS]
       const texts: Record<string, string> = {
         north:
-          'The chief leaned close and spoke in a low voice: [whisper]"You seek the tomb of the great king. ' +
-          `Where the latitude counts ${dec(p.lat as number)} degrees toward [emph]${w.north}[/emph], there he rests beneath the sand."[/whisper] ` +
-          `[breath][somber]${w.north} …[pause] I must learn what that word means;[/somber] [excited]then this number will show me the way.[/excited]`,
+          '족장이 가까이 기울이며 낮은 목소리로 말했다: [whisper]"그대는 위대한 왕의 무덤을 찾고 있다. ' +
+          `위도가 ${dec(p.lat as number)}도를 [emph]${w.north}[/emph] 쪽으로 나타내는 곳에, 그가 모래 아래에 잠들어 있다."[/whisper] ` +
+          `[breath][somber]${w.north} …[pause] 그 단어가 무엇을 뜻하는지 배워야 한다;[/somber] [excited]그러면 이 숫자가 길을 보여줄 것이다.[/excited]`,
         east:
-          'The chief pointed his staff far across the plain: [whisper]"Beyond the great desert, towards where Unumpara hides — ' +
-          `where the longitude counts ${dec(p.lon as number)} degrees toward [emph]${w.east}[/emph], the old king sleeps."[/whisper] ` +
-          `[breath][somber]${w.east} …[pause] another word I must decipher.[/somber]`,
+          '족장이 지팡으로 평야 너머 먼 곳을 가리켰다: [whisper]"위대한 사막 너머, Unumpara가 숨은 쪽 — ' +
+          `경도가 ${dec(p.lon as number)}도를 [emph]${w.east}[/emph] 쪽으로 나타내는 곳에, 옛 왕이 잠들어 있다."[/whisper] ` +
+          `[breath][somber]${w.east} …[pause] 풀어야 할 또 하나의 단어다.[/somber]`,
         west:
-          `The chief spoke of a land far toward [emph]${w.north}[/emph], beyond the great sand, where no grass grows: [whisper]"There, they say, a king of old was laid into the earth."[/whisper] [somber]If ${w.north} is a direction, this narrows my search.[/somber]`,
+          `족장은 풀 한 포기 자라지 않는 큰 모래 너머, [emph]${w.north}[/emph] 쪽 멀리의 땅에 대해 말했다: [whisper]"거기에, 듣자하니, 옛 왕이 땅에 묻혔다."[/whisper] [somber]만약 ${w.north}가 방향이라면, 이 단서로 내 탐색이 좁아진다.[/somber]`,
         central:
-          `The chief murmured: [whisper]"Go [emph]${w.north}[/emph], away from ${GLOSSARY.congo}, until the trees end and the sand begins — under such sand the old kings sleep."[/whisper] [somber]The words of the forest still veil the direction from me.[/somber]`,
+          `족장이 낮게 중얼거렸다: [whisper]"[emph]${w.north}[/emph] 쪽으로, ${GLOSSARY.congo}에서 멀어지는 쪽으로, 나무가 끝나고 모래가 시작되는 곳까지 가라 — 그런 모래 아래에 옛 왕들이 잠들어 있다."[/whisper] [somber]정글의 단어가 아직 그 방향을 내게 가린다.[/somber]`,
         south:
-          `The chief gazed long toward the horizon: [whisper]"Many moons toward [emph]${w.north}[/emph], farther than ${GLOSSARY.zambezi}, farther than the great forest — where the land is nothing but sand, the great king lies."[/whisper] [somber]Toward ${w.north} … a season as a signpost?[/somber]`,
+          `족장이 오래도록 지평선을 바라보았다: [whisper]"밤이 낮보다 많은 달 동안 [emph]${w.north}[/emph] 쪽으로, ${GLOSSARY.zambezi}보다 멀리, 큰 숲보다 멀리 — 모래만 있는 땅에, 위대한 왕이 누워 있다."[/whisper] [somber]${w.north} 쪽으로 … 계절이 이정표인가?[/somber]`,
       }
       return texts[regionId]
     },
     hintDecoded: (p: TextParams) => {
       const regionId = p.region as string
       const texts: Record<string, string> = {
-        north: `[excited]Deciphered![/excited] The chief's words mean: [emph]the tomb lies at latitude ${dec(p.lat as number)} degrees north.[/emph] [somber]Now I still need its longitude.[/somber]`,
-        east: `[excited]Deciphered![/excited] "Salewa" is the sunrise: [emph]the tomb lies at longitude ${dec(p.lon as number)} degrees east.[/emph] [somber]Together with the latitude, the site is fixed.[/somber]`,
-        west: '[excited]Now I understand the chief of the West:[/excited] the tomb lies [emph]north, beyond the edge of the great desert[/emph] — a land without grass.',
-        central: '[excited]The forest\u2019s words open up:[/excited] the tomb lies [emph]north, away from the Congo, where the sand begins[/emph].',
-        south: '[excited]The seasons speak:[/excited] "toward summer" means [emph]far north[/emph] — beyond the Zambezi, beyond the forests, in the great sand.',
+        north: `[excited]해독했다![/excited] 족장의 말은 이 뜻이다: [emph]무덤은 위도 ${dec(p.lat as number)}도 북쪽에 있다.[/emph] [somber]이제 경도가 필요하다.[/somber]`,
+        east: `[excited]해독했다![/excited] "Salewa"는 해돋이다: [emph]무덤은 경도 ${dec(p.lon as number)}도 동쪽에 있다.[/emph] [somber]위도와 함께, 그 위치는 확정된다.[/somber]`,
+        west: '[excited]이제 서부의 족장을 이해한다:[/excited] 무덤은 [emph]북쪽, 위대한 사막의 가장자리 너머[/emph]에 있다 — 풀이 없는 땅.',
+        central: '[excited]정글의 말문이 열린다:[/excited] 무덤은 [emph]콩고에서 멀어지는 북쪽, 모래가 시작되는 곳[/emph]에 있다.',
+        south: '[excited]계절이 말한다:[/excited] "여름 쪽"은 [emph]먼 북쪽[/emph]을 뜻한다 — 잠베지 너머, 숲 너머, 위대한 모래 속에.',
       }
       return texts[regionId]
     },
     unspecific: (p: TextParams) =>
-      `The chief nodded gravely, waved his hands and said again and again only [emph]"${p.word}"[/emph]. [somber]Whatever he knows, he cannot or will not say it in words I grasp.[/somber] [pause]But he pointed insistently toward the villages of the [emph]${PEOPLES[p.people as string]}[/emph] — [excited]they are said to know more.[/excited]`,
+      `족장이 엄숙하게 끄덕이며 손을 저었고, 한 번 그리고 다시 한 번 [emph]"${p.word}"[/emph]만을 말했다. [somber] 그가 무엇을 아는지에 대해, 그가 그것을 내가 붙잡는 말로 할 수 없거나 하지 않을 것이다.[/somber] [pause]그럼에도 그는 끈덕지게 [emph]${PEOPLES[p.people as string]}[/emph]의 마을 쪽을 가리�다 — [excited]그들이 더 안다고 한다.[/excited]`,
     giftLore: (p: TextParams) =>
-      `The old man spoke of the treasures of his land: what his people revere above all is [emph]${ko.gifts[p.gift as keyof typeof ko.gifts]}[/emph]. [pause]A chief honored with it will open his heart.`,
+      `노인이 자기 땅의 보물에 대해 말했다: 그의 백성이 무엇보다 숭상하는 것은 [emph]${ko.gifts[p.gift as keyof typeof ko.gifts]}[/emph]이다. [pause]그것으로 존경받은 족장은 마음을 연다.`,
     drumMessage:
-      '[awe]The chief called his drummer, and two drums spoke for him — a great one and a small one.[/awe] [pause]Seven words, each of five beats, each parted from the next by the same short silence — deep for the low syllable, bright for the high one. [excited]I know these words. I have heard every one of them in the lanes and at the water.[/excited] [pause]I have written them down in the order they were beaten; what they ask of me I must read for myself.',
+      '[awe]족장이 북 치는 사람을 불렀고, 두 개의 북이 그를 대신해 말했다 — 큰 것과 작은 것.[/awe] [pause]일곱 단어, 각 다섯 박자, 각자 같은 짧은 침묵으로 갈라져 — 낮은 음절에는 깊게, 높은 음절에는 밝게. [excited]나는 이 단어들을 안다. 골목과 물가에서 모두 들어본 것들이다.[/excited] [pause]나는 그것들이 두드려진 순서로 적었다; 그것들이 내게 묻는 것을 내가 읽어야 한다.',
     rockArtefact:
-      "[excited]Seven words, and they were an errand after all.[/excited] I followed the water against its own pull until the block of stone stood on the bank exactly as the drums had it — taller than a man, alone, nothing of its kind anywhere near it. [pause]Three spans down my shovel met something that was not stone: hammered metal on worn wood, sealed in the river's own clay. [awe]It has lain here longer than the village has stood.[/awe] [pause]I did not open it further. [somber]It is not mine to open.[/somber]",
+      "[excited]일곱 단어, 그것들은 결국 심부름이었다.[/excited] 나는 물을 그 자체의 당김에 거슬러 따라가, 북이 말한 그대로의 돌덩이가 강기슭에 서 있는 곳까지 — 사람 키보다 크고, 홀로, 그 종류의 어떤 것도 가까이에는 없다. [pause]세 뼘 아래서 내 삽은 돌이 아닌 무엇을 만났다: 닳은 나무 위의 두드려 만든 금속, 강의 자체 진흙에 봉인된 채. [awe]그것은 이 마을이 서 있던 것보다 더 오래 그곳에 누워 있었다.[/awe] [pause]나는 그것을 더 열지 않았다. [somber]열 권리는 내게 없다.[/somber]",
     artefactGiven:
-      "[breath]I carried it back down the river and laid it in the chief's hands.[/breath] [pause]He turned it over once and spoke three words over it. [excited]I had heard every one of them before — one at the stone by the lane, one where they were digging, one from the children at their game.[/excited] [pause][awe]He had sent me to a place he cannot name in any tongue of mine, and I went there and came back with what lay buried at it.[/awe] [pause][somber]We share no language.[pause] And yet we have just understood one another.[/somber]",
-    digNothing: '[weary]I dug at this spot, but the sand yielded nothing except stones and old roots.[/weary]',
+      "[breath]나는 그것을 강을 따라 다시 가져가 족장의 손에 놓았다.[/breath] [pause]그는 그것을 한 번 뒤집고 그 위에 세 단어를 말했다. [excited]나는 그 단어들 각각을 전에 들어본 적이 있다 — 하나는 골목의 돌 곁에서, 하나는 사람들이 파던 자리에서, 하나는 아이들의 놀이에서.[/excited] [pause][awe]그는 내 어떤 혀로도 부를 수 없는 곳을 알려 주었고, 나는 그곳에 가서 그곳에 묻혀 있던 것을 가지고 돌아왔다.[/awe] [pause][somber]우리는 말을 같이하지 않는다.[pause] 그럼에도 방금 서로를 알았다.[/somber]",
+    digNothing: '[weary]이 자리를 팠으나, 모래는 돌과 오래된 뿌리 외에는 아무것도 내주지 않았다.[/weary]',
     victory: (p: TextParams) =>
-      `${ko.formatDate(p.day as number, 1890)}. [excited]My shovel struck stone —[pause] hewn stone![/excited] [breath]With trembling hands I laid the burial chamber bare. [awe]Gold gleams in the torchlight, and upon the sarcophagus rests the mask of the great king.[/awe] [breath][awe]I have found it.[pause] The Heart of Africa.[/awe] [pause][somber]The journey was worth every step.[/somber]`,
+      `${ko.formatDate(p.day as number, 1890)}. [excited]내 삽이 돌을 —[pause] 깬 돌을! — 만졌다.[/excited] [breath]떨리는 손으로 매장실을 드러냈다. [awe]횃불 불빛에 금이 빛나고, 석관 위에는 위대한 왕의 가면이 놓여 있다.[/awe] [breath][awe]찾았다.[pause] 아프리카의 심장을.[/awe] [pause][somber]이 여정은 매 한 걸음이 값지다.[/somber]`,
     foodLow:
-      '[somber]My provisions are running low.[/somber] I must reach a town or village soon, [pause]or hunger will become my constant companion.',
+      '[somber]식량이 바닥나고 있다.[/somber] 곧 도시나 마을에 닿아야 한다, [pause]그렇지 않으면 배고픔이 늘 내 벗이 될 것이다.',
     foodOut:
-      '[weary]The last of my provisions is gone.[pause] Hunger gnaws at me; every step comes harder than the one before.[/weary] [fear]I must find supplies,[pause] and quickly.[/fear]',
+      '[weary]식량의 마지막이 다했다.[pause] 배고픔이 내 안을 갉아먹고, 매 걸음이 전 걸음보다 무겁다.[/weary] [fear]�리 보급을 찾아야 한다,[pause]서둘러야 한다.[/fear]',
     dehydrationOn:
-      '[weary]My tongue sticks to the roof of my mouth.[pause] Without a canteen the desert drinks me dry;[/weary] [fear]my steps are beginning to stray.[/fear]',
+      '[weary]혀가 입천장에 붙었다.[pause] 물통이 없으니 사막이 나를 말린다;[/weary] [fear]걸음걸이가 어긋나기 시작한다.[/fear]',
     dehydrationOver:
-      '[somber]Water at last.[/somber] My strength returns with every sip, and my stride is steady again.',
+      '[somber]드디어 물이다.[/somber] 한 모금마다 힘이 돌아오고, 걸음도 다시 안정된다.',
     sunblindOver:
-      '[somber]The white glare has faded from my eyes.[/somber] [excited]I can see clearly again![/excited]',
+      '[somber]흰 �光이 눈에서 사라졌다.[/somber] [excited]다시 또렷하게 보인다![/excited]',
     woundHealed:
-      '[somber]I changed the dressing today and found the wound closed at last.[/somber] [excited]My body has mended itself —[pause] I am whole again.[/excited]',
+      '[somber]오늘 붕대를 갈았더니 상처가 마침내 닫혀 있었다.[/somber] [excited]몸이 스스로를 치료했다 —[pause] 다시 온전하다.[/excited]',
     woundEased:
-      '[somber]The deep wound is knitting.[/somber] [weary]It still pulls at every step, but the worst is past —[pause] with rest and rations it will close on its own.[/weary]',
+      '[somber]깊은 상처가 아물어 간다.[/somber] [weary]여전히 걸을 때마다 당기지만, 가장 어려운 고비는 지났다 —[pause] 휴식과 양식만 있으면 스스로 닫힐 것이다.[/weary]',
     medicineUsed:
-      'I took the medicine. [pause][somber]The fever is breaking and my wounds are closing;[/somber] [excited]I shall be myself again soon.[/excited]',
+      '약을 복용했다. [pause][somber]열이 내리고 상처가 닫히고 있다;[/somber] [excited]곧 평소의 나를 되찾을 것이다.[/excited]',
     healthPoor:
-      '[weary]I am at the end of my strength.[pause] My hands tremble as I write these lines.[/weary] [fear]If I do not find rest and relief soon, this journal will outlive me.[/fear]',
+      '[weary]힘이 다했다.[pause] 이 글을 쓰는 손이 떨린다.[/weary] [fear]� 휴식과 회복을 찾지 못하면, 이 일지는 나보다 오래 남을 것이다.[/fear]',
     animalAttack: (p: TextParams) => {
       const animal = ko.animals[p.animal as keyof typeof ko.animals]
       const openings: Record<string, string> = {
-        lion: `[fear]I was attacked by ${animal}![/fear]`,
-        cheetah: `[fear]In a blur of speed, ${animal} broke from the grass at me![/fear]`,
-        leopard: `[fear]Out of nowhere ${animal} was upon me![/fear]`,
-        hyena: `[fear]Jaws snapping, ${animal} closed in on me![/fear]`,
-        snake: `[fear]I nearly stepped on ${animal}![/fear]`,
-        crocodile: `[fear]The water erupted —[pause] ${animal}![/fear]`,
+        lion: `[fear]${animal}에게 습격을 당했다![/fear]`,
+        cheetah: `[fear]찰나의 속도로, ${animal}가 풀 속에서 나를 향해 달려왔다![/fear]`,
+        leopard: `[fear]어디서 나타났는지 ${animal}가 내 앞에 덮쳤다![/fear]`,
+        hyena: `[fear]턱을 달그락거리며 ${animal}가 나를 향해 다가왔다![/fear]`,
+        snake: `[fear]거의 ${animal}을(를) 밟을 뻔다![/fear]`,
+        crocodile: `[fear]물이 폭발하듯 —[pause] ${animal}![/fear]`,
       }
       const results: Record<string, string> = {
-        escaped: ' [excited]I escaped.[/excited]',
-        defended: ' [excited]I used my weapon and drove the beast off.[/excited]',
-        light: ' [somber]I was lightly injured.[/somber]',
-        severe: ' [weary]I was severely wounded;[pause] every movement hurts.[/weary]',
+        escaped: ' [excited]나는 빠져나왔다.[/excited]',
+        defended: ' [excited]무기를 들어 그 짐승을 물리쳤다.[/excited]',
+        light: ' [somber]가�운 상처를 입었다.[/somber]',
+        severe: ' [weary]심하게 부상을 입었다;[pause] 움직일 때마다 고통이 따른다.[/weary]',
       }
       return openings[p.animal as string] + results[p.result as string]
     },
     robbery: (p: TextParams) =>
       p.result === 'deterred'
-        ? '[fear]Robbers blocked my path —[/fear] [excited]but one look at the rifle and they melted back into the bush.[/excited]'
-        : `[fear]Robbers fell upon me![/fear] [somber]They took ${p.money} dollars before I could flee.[/somber]`,
+        ? '[fear]강도가 내 길을 막았다 —[/fear] [excited]그러나 소총을 한 번 보자 그들은 밀림 속으로 녹아들었다.[/excited]'
+        : `[fear]강도가 내게 덮쳤다![/fear] [somber]그들이 내가 도망치기 전에 ${p.money} 달러를 가져갔다.[/somber]`,
     feverOn:
-      '[weary]A fever burns through me.[pause] The land sways before my eyes, and my legs go where they will.[/weary] [fear]I must find medicine, or this wetland will be my grave.[/fear]',
+      '[weary]열이 나를 태운다.[pause] 땅이 눈앞에서 흔들리고, 다리는 제 갈 데로 간다.[/weary] [fear]약을 찾아야 한다, 그렇지 않으면 이 습지는 내 무덤이 될 것이다.[/fear]',
     sunblindOn:
-      '[fear]The desert light has scorched my eyes![/fear] [weary]The world is a white glare;[pause] I can barely make out my own hand.[/weary] Only far from the desert will they recover.',
+      '[fear]사막의 빛이 내 눈을 덥혔다![/fear] [weary]세상은 하얀 빛의 섬광;[pause] 내 손가락조차 겨우 분간된다.[/weary] 사막에서 멀리 벗어나야 회복될 것이다.',
     sandstorm:
-      '[fear]A sandstorm swallowed the horizon![/fear] [weary]I crouched behind my pack for hours while the world turned to howling dust.[/weary] Precious time is lost.',
+      '[fear]모래폭풍이 지평선을 삼켰다![/fear] [weary]세상이 울부짖는 먼지가 되는 동안, 나는 짐 뒤에 웅크리고 있었다.[/weary] 귀중한 시간을 잃었다.',
     sweptAway:
-      '[fear]The current seized me and swept me over the falls![/fear] [weary]I dragged myself to the bank, battered and bleeding —[pause] half of my belongings are gone with the river.[/weary]',
+      '[fear]물살이 나를 붙잡아 폭포 위로 휩쓸었다![/fear] [weary]멍든 몸과 피를 흘리며 강기슭에 기어올랐다 —[pause] 내 물건의 절반은 강과 함께 사라졌다.[/weary]',
     landmarkDiscovered: (p: TextParams) => {
       const name = ko.landmarks[p.landmark as keyof typeof ko.landmarks]
       const flavors: Record<string, string> = {
-        mountain: `[awe]There it rose before me at last —[pause] ${name}, its flanks vast against the sky.[/awe] [excited]I have laid eyes on it, and my journal shall bear witness.[/excited]`,
-        falls: `[awe]A distant thunder rolled over the land long before I saw it:[pause] ${name}![/awe] [excited]The river hurls itself into the deep in walls of white water —[pause] a sight I shall never forget.[/excited]`,
-        lake: `[awe]A great water opened before me —[pause] ${name}, stretching away to the horizon like a sea.[/awe] [somber]I marked its shore upon my map.[/somber]`,
-        grave: `[whisper]I walk among bleached bones and mighty tusks —[pause] the graveyard of the elephants.[/whisper] [awe]So the old tales told the truth after all.[/awe]`,
-        'giza-pyramids': `[awe]There they stood across the river as the morning haze lifted —[pause] the three great pyramids of ${name}, and the lion-bodied guardian crouched before them.[/awe] [excited]Raised by African hands four thousand years before any European empire —[pause] the oldest of all the wonders, and it stands in Africa.[/excited]`,
-        pyramids: `[awe]Steep pyramids crowd the Nile's east bank —[pause] ${name}, the royal city of Kush.[/awe] [excited]A kingdom that raised these tombs and wrote in its own script —[pause] an African realm in its own right, no shadow of Egypt.[/excited]`,
-        'stone-city': `[awe]Mortarless walls of fitted granite curve across the hill, crowned by a great conical tower —[pause] ${name}.[/awe] [somber]African hands raised this capital, whatever the settlers back home care to claim.[/somber]`,
-        'rock-churches': `[awe]Churches hewn downward out of the living rock, cross upon cross sunk into the stone —[pause] ${name}.[/awe] [excited]The work of a Christian Ethiopian kingdom,[pause] and worshippers kneel in them still.[/excited]`,
-        'coastal-ruins': `[somber]Coral-stone walls and broken arches stand above the tideline —[pause] ${name}.[/somber] [awe]A Swahili city that minted its own coin and traded clear across the Indian Ocean, long before any European sail.[/awe]`,
-        stelae: `[awe]Granite needles taller than any mast rise from the grass, one fallen giant among them —[pause] the stelae of ${name}.[/awe] [excited]The Aksumite kingdom carved these, struck its own coinage and traded across the Red Sea —[pause] an African power of the first rank.[/excited]`,
-        castles: `[awe]Stone castles with battlements and round towers stand on the highland —[pause] ${name}, seat of Ethiopia's emperors.[/awe] [somber]African masons raised every wall of it, against everything the colonial accounts care to claim.[/somber]`,
-        'cliff-dwellings': `[awe]Dwellings terraced into the sheer escarpment, granaries clinging to ledges high above the plain —[pause] ${name}.[/awe] [excited]The Dogon read this land vertically, building their homes over the older houses of the Tellem.[/excited]`,
-        crater: `[awe]The rim fell away beneath me into a vast green bowl —[pause] ${name}, a walled world teeming with game.[/awe] [somber]Its ring stands against the plains like a rampart raised by the earth itself.[/somber]`,
-        volcano: `[fear]The ground trembled underfoot,[pause] and above me the steep cone smoked —[/fear] [awe]${name}, the mountain the Maasai call the mountain of God.[/awe] [whisper]I did not linger on its slopes.[/whisper]`,
-        delta: `[awe]A river that never finds the sea —[pause] ${name}, spending itself into the sands.[/awe] [excited]Its waters braid into a maze of channels and reed islands as far as the eye reaches.[/excited]`,
-        wetland: `[somber]The Nile simply vanishes here —[pause] swallowed by ${name}, an endless papyrus swamp.[/somber] [weary]For days the channel loses itself among floating reed;[pause] no bank, no landmark, only green.[/weary]`,
+        mountain: `[awe]드디어 그것이 내 앞에 우뚝 섰다 —[pause] ${name}, 하늘을 향해 끝없이 펼쳐진 능선.[/awe] [excited]내가 그것을 보았으니, 내 일지가 증거할 것이다.[/excited]`,
+        falls: `[awe]그것을 보기도 전에 먼 곳에서 천둥이 땅 위로 굴러왔다:[pause] ${name}![/awe] [excited]강이 흰 물의 벽으로 깊은 곳으로 내던진다 —[pause] 내가 결코 잊지 못할 풍경.[/excited]`,
+        lake: `[awe]나의 앞에 큰 물이 열렸다 —[pause] ${name}, 바다처럼 지평선까지 뻗어 있는.[/awe] [somber]그 강변을 내 지도에 적었다.[/somber]`,
+        grave: `[whisper]나는 바랜 뼈와 거대한 어금니 사이를 걷는다 —[pause] 코끼리의 무덤.[/whisper] [awe]오래된 이야기는 결국 사실이었다.[/awe]`,
+        'giza-pyramids': `[awe]아침 안개가 걷히자, 강 건너 그것들이 섰다 —[pause] ${name}의 세 큰 피라미드, 그리고 그 앞에 �크린 사자 몸의 수호자.[/awe] [excited]어떤 유럽 제국보다 4천 년 앞선 아프리카의 손에 의해 세워진 —[pause] 모든 경이 중 가장 오래된 것이, 아프리카에 서 있다.[/excited]`,
+        pyramids: `[awe]가파른 피라미드들이 나일 동쪽 강변에 빽빽이 —[pause] ${name}, 쿠시의 왕도.[/awe] [excited]이 왕국은 이 무덤들을 세우고 자기 문자로 적었다 —[pause] 이집트의 그늘이 아닌, 자체의 아프리카 왕국.[/excited]`,
+        'stone-city': `[awe]석회 없이 맞춘 화강암 벽이 언덕을 따라 휘어져 있고, 그 위에 큰 원뿔 탑 —[pause] ${name}.[/awe] [somber]이 도읍은 아프리카의 손이 세운 것이다, 본토의 식민지 사가 무엇이라 주장하든.[/somber]`,
+        'rock-churches': `[awe]살아 있는 바위를 아래로 파서 만든 교회들, 십자가가 또 십자가를 돌에 새긴 —[pause] ${name}.[/awe] [excited]기독교 에티오피아 왕국의 작품이며,[pause] 신자들은 오늘도 그 안에서 무릎을 꿇는다.[/excited]`,
+        'coastal-ruins': `[somber]산호석의 벽과 깨어진 아치가 조수선 위에 서 있다 —[pause] ${name}.[/somber] [awe]스와힐리 도시가 자신의 동전을 주조하고, 어떤 유럽 범선이 오기도 전에 인도양을 가로질러 교역했다.[/awe]`,
+        stelae: `[awe]어떤 돛대보다 높은 화강암 바늘들이 풀숲에서 솟아 있고, 그 사이에 넘어진 거인 하나 —[pause] ${name}의 스텔라들.[/awe] [excited]악숨 왕국이 이것들을 새기고, 자신의 화폐를 주조했으며 홍해를 넘어 교역했다 —[pause] 최고 수준의 아프리카 강대국.[/excited]`,
+        castles: `[awe]성벽과 원형 탑의 석조 성채가 고원에 서 있다 —[pause] ${name}, 에티오피아 황제의 자리.[/awe] [somber]그 모든 벽돌은 아프리카 석공의 손이 쌓은 것이다, 식민지 기록이 무엇이라 주장하든.[/somber]`,
+        'cliff-dwellings': `[awe]벼랑에 계단식으로 깎은 주거, 평야 높이 너머 선반에 붙은 곡물 저장고 —[pause] ${name}.[/awe] [excited]도곤족은 이 땅을 수직으로 읽고, 이전 텔렘의 가옥 위에 자기 집을 짓는다.[/excited]`,
+        crater: `[awe]�랑이 내 발 아래로 떨어져 커다란 초록 보울로 이어졌다 —[pause] ${name}, 짐승이 가득한 벽의 세계.[/awe] [somber]그 고리는 평야를 향해 마치 땅이 스스로 쌓은 성벽처럼 서 있다.[/somber]`,
+        volcano: `[fear]발 아래 땅이 떨렸고,[pause] 내 위 가파른 원뿔에서 연기가 —[/fear] [awe]${name}, 마사이족이 신의 산이라 부르는 산.[/awe] [whisper]나는 그 비탈에 오래 머물지 않았다.[/whisper]`,
+        delta: `[awe]바다를 찾지 못하는 강 —[pause] ${name}, 모래 속으로 스스로를 쏟아 붓는다.[/awe] [excited]그 물은 눈이 닿는 끝까지 수로와 갈대섬의 미궁으로 갈라진다.[/excited]`,
+        wetland: `[somber]나일강은 여기서 그냥 사라진다 —[pause] ${name}에 삼켜져, 끝없는 파피루스 늪이 된다.[/somber] [weary]수일간 수로는 띄우는 갈대 사이로 헤맨다;[pause] 강변도, 이정표도 없고, 초록뿐이다.[/weary]`,
       }
       return flavors[p.kind as string] ?? flavors.mountain
     },
     mountainNoRope:
-      '[weary]No rope in hand, and yet there is no way around this range.[/weary] [fear]I climb slowly, hold by hold —[pause] one slip here and the rock will not catch me.[/fear]',
+      '[weary]손에 밧줄도 없는데, 이 산맥을 돌아갈 길도 없다.[/weary] [fear]한 손, 한 발씩 천천히 오른다 —[pause] 여기서 한 번 미끄러지면 바위가 날 받아 주지 않는다.[/fear]',
     penaltyJungle:
-      '[weary]The jungle closes in, thick with vine and thorn.[/weary] [emph]Without a machete[/emph] I must force every step —[pause] a blade in hand would open the way.',
+      '[weary]정글이 덩굴과 가시로 꽉 들어차며 다가온다.[/weary] [emph]마체테 없이[/emph] 매 걸음을 억지로 내디�야 한다 —[pause] 손에 날이 있으면 길을 열 수 있을 텐데.',
     penaltyWater:
-      '[weary]The water bars my path, and I have no canoe.[/weary] I wade and swim across, slow and soaked;[pause] [emph]a canoe[/emph] would carry me over with ease and keep the crocodiles at bay.',
+      '[weary]물이 내 길을 막고, 카누도 없다.[/weary] 천천히 젖은 채로 물을 건너 헤엄친다;[pause] [emph]카누[/emph]가 있으면 쉽게 건널 수 있고 악어의 표적에서도 벗어날 텐데.',
     penaltyCanoeLand:
-      '[weary]The canoe on my back is a heavy burden overland.[/weary] It drags at every step —[pause] [emph]for long stretches on foot[/emph] I had better leave it behind in a camp.',
+      '[weary]등 위의 카누가 육지에서 무거운 짐이다.[/weary] 매 걸음마다 걸린다 —[pause] [emph]긴 도보 구간[/emph]에는 캠프에 두고 오는 편이 낫다.',
     dangerUnarmed:
-      '[somber]I set out into the wilds,[pause] and it struck me that I carry no weapon.[/somber] [fear]Lions, leopards and snakes prowl this country.[/fear] [emph]A rifle in the pack[/emph] is the surest protection —[pause] better even than a machete.',
+      '[somber]야지로 나서려는데,[pause] 무기가 없다는 것이 떠올랐다.[/somber] [fear]사자, 표범, 뱀이 이 땅을 배회한다.[/fear] [emph]짐에 든 소총[/emph]이 가장 확실한 보호다 —[pause] 마체테보다도.',
     dangerDesert:
-      '[weary]The desert blazes without mercy.[/weary] [fear]Without water, thirst and the sun-blindness threaten —[pause] and the blindness can kill.[/fear] [emph]A filled canteen[/emph] holds off the thirst;[pause] against the blindness, only leaving the desert will serve.',
+      '[weary]사막이 자비 없이 작열한다.[/weary] [fear]물 없이는 갈증과 눈병이 닥치고 —[pause] 눈병은 죽음까지 이른다.[/fear] [emph]가득 찬 물통[/emph]이 갈증을 밀어내고;[pause] 눈병에 대항하려면 사막을 벗어나는 수밖에 없다.',
     dangerWater:
-      '[fear]Crocodiles lie in wait in the water.[/fear] [weary]Without a canoe I am at their mercy, and my rifle turns wet and useless.[/weary] [emph]A canoe[/emph] carries me across safely and keeps the weapon dry;[pause] failing that, only the machete helps.',
+      '[fear]물속에 악어가 매복하고 있다.[/fear] [weary]카누가 없으면 그들의 자비에 달렸고, 내 소총은 젖어서 쓸모없었다.[/weary] [emph]카누[/emph]가 있으면 안전히 건널 수 있고 무기도 마를 수 있다;[pause] 그마저 안 되면 마체테가 유일한 도움이다.',
     dangerWaterCanoe:
-      '[fear]Crocodiles lie in wait in the water —[pause] I see their eyes above the surface.[/fear] [somber]Good that the canoe carries me:[/somber] [emph]out of their reach,[/emph] and the rifle stays dry aboard.',
+      '[fear]물 속에 악어가 매복한다 —[pause] 수면 위로 그들의 눈이 보인다.[/fear] [somber]카누가 나를 실어 나르는 게 다행이다:[/somber] [emph]그들의 손길 밖,[/emph] 그리고 소총은 배 위에서 마르지 않는다.',
     dangerWetland:
-      '[somber]A damp haze hangs over the thicket.[/somber] [fear]Here the fever breeds, clouding the mind and draining the strength.[/fear] [emph]Medicine in the pack[/emph] cures it —[pause] I should always keep some at hand.',
+      '[somber]덤불 위에 축축한 안개가 걸려 있다.[/somber] [fear]여기서는 열병이 번진다, 정신을 흐리게 하고 힘을 빼앗는다.[/fear] [emph]짐의 약[/emph]이 그것을 고치지만 —[pause] 늘 한약 정도는 지니고 있어야 한다.',
     mountainFall:
-      '[fear]The rock gave way beneath my foot, and I fell![/fear] [weary]Bruised and dazed I came to rest far below —[pause] without a rope this ascent nearly became my end.[/weary]',
+      '[fear]내 발 아래 바위가 무너져, 내가 떨어졌다![/fear] [weary]멍이 들고 멍하게 훨씬 아래에서 멈추었다 —[pause] 밧줄이 없었으면 이번 등반이 내 끝이었을 것이다.[/weary]',
     mountainFallItem:
-      '[fear]The rock gave way beneath my foot, and I fell![/fear] [weary]Bruised, I dragged myself onward —[pause] and in the fall a piece of my gear tore loose and vanished into the depths.[/weary]',
+      '[fear]내 발 아래 바위가 무너져, 내가 떨어졌다![/fear] [weary]멍� 몸으로 간신히 더 기어갔다 —[pause] 떨어지면서 내 짐의 일부가 떨어져 나가고 깊이 속으로 사라졌다.[/weary]',
     findRemains: (p: TextParams) =>
-      `[somber]I came upon the remains of a traveler who made it no farther.[pause] A grim warning of this land.[/somber] Among the bones lay a purse with ${p.money} dollars — [whisper]may they serve a better fate.[/whisper]`,
+      `[somber]더 멀리 가지 못한 여행자의 유해를 발견했다.[pause] 이 땅의 소름 끼치는 경고다.[/somber] 뼈 사이에는 ${p.money} 달러가 든 돈주머니가 있었다 — [whisper]좀 더 나은 운을 빈다.[/whisper]`,
     deadline1:
-      '[somber]A letter reached me from the financiers.[pause] Their patience is thinning: more than half the granted time is spent, and I have no tomb to show.[/somber] [emph]I must press on.[/emph]',
+      '[somber]후원자로부터 편지가 닿았다.[pause] 그들의 인내가 얇아지고 있다: 허락된 시간의 절반 이상이 지났고, 보여줄 무덤은 없다.[/somber] [emph]서둘러야 한다.[/emph]',
     deadline2:
-      '[fear]The final warning![/fear] [somber]The financiers write that the expedition will be recalled soon.[pause] If I do not find the tomb now, everything was in vain.[/somber]',
+      '[fear]마지막 경고![/fear] [somber]후원자들이 원정이 곧 회수될 것이라고 적었다.[pause] 지금 무덤을 찾지 못하면, 모든 것이 헛되었다.[/somber]',
     successor:
-      "[somber]I take up this journal from the hands of my predecessor, who gave everything for it.[pause] His notes shall guide me.[/somber] [emph]The search continues where he left off.[/emph]",
+      "[somber]이 일지를 그것을 위해 모든 것을 바친 전임자의 손에서 이어받는다.[pause] 그의 기록이 내 길을 인도할 것이다.[/somber] [emph]탐색은 그가 멈춘 그곳에서 계속된다.[/emph]",
     treasureFound: (p: TextParams) =>
-      `[excited]My shovel struck something hard![/excited] [breath]From the earth I lifted a cache of [emph]${ko.treasures[p.treasure as keyof typeof ko.treasures].toLowerCase()}[/emph] — buried long ago and forgotten by all but the sand. [awe]Fortune smiles on the patient digger.[/awe]`,
+      `[excited]내 삽이 무엇인가를 세게 찔렀다![/excited] [breath]땅에서 [emph]${ko.treasures[p.treasure as keyof typeof ko.treasures].toLowerCase()}[/emph]의 비장한 매장지를 꺼냈다 — 오래전에 묻혀서 모래만 기억하던. [awe]인내하는 파는 사람에게 행운이 미소 짓는다.[/awe]`,
     ivoryFound: (p: TextParams) =>
-      `[awe]The elephant graveyard.[pause] Bleached bones tower about me like the ribs of stranded ships.[/awe] [somber]With quiet reverence I freed ${p.count === 1 ? 'a great tusk' : `${p.count} great tusks`} from the ground —[pause] ivory of a purity I have never seen.[/somber]`,
+      `[awe]코끼리 무덤.[pause] 바랜 뼈들이 좌초한 배의 늑골처럼 내 둘레에 솟아 있다.[/awe] [somber]조용한 경외심을 품고 땅에서 ${p.count === 1 ? '위대한 상아 한 쌍을' : `${p.count}�의 위대한 상아를`} 꺼냈다 —[pause] 내가 본 적 없는 순도의 상아.[/somber]`,
     bounty: (p: TextParams) => {
       const names = [namesFromCsv(p.villages, ko.places), namesFromCsv(p.landmarks, LANDMARKS)].filter(Boolean).join(', ')
-      return `[excited]The geographic society has honored my reports![/excited] For ${p.count} documented ${Number(p.count) === 1 ? 'discovery' : 'discoveries'} — [emph]${names}[/emph] — they sent word ahead: a [emph]telegraphic transfer[/emph] of [emph]${p.amount} dollars[/emph] awaited me at the port. [pause]Exploration, it turns out, can pay for its own provisions.`
+      return `[excited]지리학회가 내 보고를 기렸다![/excited] ${p.count}건의 기록된 발견에 대해 — [emph]${names}[/emph] — 그들은 앞서 소식을 보냈다: 항구에서 [emph]전신환[/emph]으로 [emph]${p.amount} 달러[/emph]가 나를 기다린다. [pause]탐험은, 알고 보니, 자신의 보급값을 벌 수 있다.`
     },
     ferry: (p: TextParams) =>
-      `I booked passage from ${ko.places[p.from as string]} to ${ko.places[p.to as string]}. [pause]${p.days} days at sea — [somber]the coast slid past like a slow panorama,[/somber] [excited]and I arrived rested, with dry boots for once.[/excited]`,
+      `${ko.places[p.from as string]}에서 ${ko.places[p.to as string]}까지의 항해를 예약했다. [pause]바다 위 ${p.days}일 — [somber]해안은 느린 파노라마처럼 흘러 지나갔고,[/somber] [excited]이번에는 드디어 마른 신발을 신고 도착했다.[/excited]`,
     valuableRevered: (p: TextParams) =>
-      `No sooner had I entered the village than eyes turned to the [emph]${ko.treasures[p.treasure as keyof typeof ko.treasures].toLowerCase()}[/emph] in my hand. [excited]Murmurs of awe followed me through the lanes —[pause] the ${PEOPLES[p.people as string]} revere what I carry.[/excited]`,
+      `마을에 들어서자마자 시선이 내 손의 [emph]${ko.treasures[p.treasure as keyof typeof ko.treasures].toLowerCase()}[/emph]로 향했다. [excited]경외의 속삭임이 골목을 따라 나를 따라갔고 —[pause] ${PEOPLES[p.people as string]}는 내가 가진 것을 숭상한다.[/excited]`,
     valuableRejected: (p: TextParams) =>
-      `[fear]A mistake to carry it openly![/fear] The ${PEOPLES[p.people as string]} shrank back from the [emph]${ko.treasures[p.treasure as keyof typeof ko.treasures].toLowerCase()}[/emph] in my hand as from an ill omen. [somber]Doors closed;[pause] mothers pulled their children inside.[/somber]`,
+      `[fear]그것을 �반으로 드러낸 것은 실수였다![/fear] ${PEOPLES[p.people as string]}는 내 손의 [emph]${ko.treasures[p.treasure as keyof typeof ko.treasures].toLowerCase()}[/emph]에게서 흉조처럼 움츠러들었다. [somber]문이 닫혔다;[pause] 어머니들은 아이들을 안으로 데리고 들어갔다.[/somber]`,
     friendPledge: (p: TextParams) =>
-      `[awe]The chief of the ${PEOPLES[p.people as string]} rose and laid both hands upon my shoulders.[/awe] Before the assembled village he named me [emph]Honored Friend[/emph] of his people. [excited]"Wherever our villages stand," he pledged, "our people shall watch over you."[/excited] [breath][somber]I bowed deeply.[pause] Such a gift weighs more than gold.[/somber]`,
+      `[awe]${PEOPLES[p.people as string]}의 족장이 일어서서 두 손을 내 어깨 위에 얹었다.[/awe] 모인 마을 앞에서 그는 나를 자기 백성의 [emph]존경받는 친구[/emph]라 명했다. [excited]"우리의 마을이 서 있는 어디서든, 우리 백성은 그대를 지켜줄 것이다."[/excited] 그가 약속했다. [breath][somber]나는 깊이 고개를 숙였다.[pause] 그런 선물은 금보다 무겁다.[/somber]`,
     friendRescue: (p: TextParams) => {
       const animal = ko.animals[p.animal as keyof typeof ko.animals]
-      const hurt = p.result === 'light' ? ' [somber]I was only lightly injured.[/somber]' : ' [excited]I escaped unharmed.[/excited]'
-      return `[fear]I was attacked by ${animal}![/fear] [excited]A group of the ${PEOPLES[p.people as string]} rushed to my aid at once and drove the beast away.[/excited]${hurt} [pause][somber]I owe these people my life.[/somber]`
+      const hurt = p.result === 'light' ? ' [somber]나는 가벼운 상처만 입었다.[/somber]' : ' [excited]나는 상처 없이 빠져나왔다.[/excited]'
+      return `[fear]${animal}에게 습격을 당했다![/fear] [excited]한 무리의 ${PEOPLES[p.people as string]}가 즉시 달려와 그 짐승을 몰아냈다.[/excited]${hurt} [pause][somber]나는 내 목숨을 이 사람들에게 빚지고 있다.[/somber]`
     },
     friendRescueRobbers: (p: TextParams) =>
-      `[fear]Robbers blocked my path —[/fear] [excited]but men of the ${PEOPLES[p.people as string]} appeared from the bush with spears raised, and the bandits scattered like startled birds.[/excited] [somber]The chief's pledge is worth more than any rifle.[/somber]`,
+      `[fear]강도가 내 길을 막았다 —[/fear] [excited]그러나 ${PEOPLES[p.people as string]}의 사내가 창을 들고 밀림에서 나타나자, 산적들은 놀란 새처럼 흩어졌다.[/excited] [somber]족장의 약속은 어떤 소총보다 값지다.[/somber]`,
     friendAid: (p: TextParams) =>
-      `[weary]I could go no farther;[pause] the land swam before my eyes.[/weary] [somber]Then hands lifted me —[/somber] [excited]people of the ${PEOPLES[p.people as string]} had found me.[/excited] They brought water, food and bitter medicine, and stayed until my strength returned. [pause][awe]I am alive because I am their friend.[/awe]`,
+      `[weary]더 멀리 갈 수 없었다;[pause] 눈앞의 땅이 흔들렸다.[/weary] [somber]그때 손들이 나를 들어 올렸다 —[/somber] [excited]${PEOPLES[p.people as string]}의 사람들이 나를 발견한 것이다.[/excited] 물과 음식, 쓴 약을 가져왔고, 내 힘이 돌아올 때까지 �에 머물렀다. [pause][awe]내가 살아 있는 것은 그들의 벗이기 때문이다.[/awe]`,
     friendSupplies: (p: TextParams) =>
-      `In the village of the ${PEOPLES[p.people as string]} I was received like family: [excited]they filled my packs with provisions and pressed medicine into my hands,[/excited] and no one would hear of payment. [pause][somber]The friendship of this region is my safest possession.[/somber]`,
+      `${PEOPLES[p.people as string]}의 마을에서 나는 가족처럼 맞아들여졌다: [excited]내 짐을 식량으로 채우고 약을 내 손에 쥐어 주었으며,[/excited] 아무도 값에 대해 들으려 하지 않았다. [pause][somber]이 지역의 우정만큼 안전한 소유는 없다.[/somber]`,
     robberyCommitted: (p: TextParams) =>
-      `[somber]I have done a thing that cannot be undone.[/somber] [fear]With the rifle raised I emptied the hut of the ${PEOPLES[p.people as string]} and fled the village.[/fear] [breath][weary]The haul: ${p.money} dollars, ${p.gifts} trade goods and ${p.food} days of provisions.[pause] Behind me: screams, and a silence worse than the screams.[pause] No hut of this region will ever open to me again.[/weary]`,
+      `[somber]나는 돌이킬 수 없는 일을 저질렀다.[/somber] [fear]소총을 들어 ${PEOPLES[p.people as string]}의 오두막을 비우고 마을에서 도망쳤다.[/fear] [breath][weary]탈취: ${p.money} 달러, 교역품 ${p.gifts}점, 식량 ${p.food}일분.[pause] 내 뒤에서는 비명, 그리고 그 비명보다 더 참혹한 침묵.[pause] 이 지역의 어떤 오두막도 나를 다시 받아들이지 않을 것이다.[/weary]`,
     campLooted:
-      '[somber]I found my camp torn apart —[pause] the poles thrown down, the ground churned by strange feet.[/somber] [weary]Everything I had left behind is gone.[/weary] [fear]Nothing in this wilderness is safe that is not carried or guarded.[/fear]',
+      '[somber]캠프가 너덜너덜 헤집힌 채 발견되었다 —[pause] 기둥은 넘어지고, 땅은 낯선 발자국으로 뒤집혔다.[/somber] [weary]내가 두고 온 것은 모두 사라졌다.[/weary] [fear]이 야생에서, 짊어지거나 지키지 않는 것은 안전하지 않다.[/fear]',
   },
 }
