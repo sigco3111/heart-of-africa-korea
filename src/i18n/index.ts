@@ -7,10 +7,11 @@ import { create } from 'zustand'
 import type { Strings } from './types'
 import { de } from './de'
 import { en } from './en'
+import { ko } from './ko'
 
-export type Lang = 'de' | 'en'
+export type Lang = 'de' | 'en' | 'ko'
 
-export const DICTIONARIES: Record<Lang, Strings> = { de, en }
+export const DICTIONARIES: Record<Lang, Strings> = { de, en, ko }
 export const LANGUAGES = Object.keys(DICTIONARIES) as Lang[]
 
 interface LocaleState {
@@ -19,7 +20,7 @@ interface LocaleState {
 }
 
 export const useLocale = create<LocaleState>()((set) => ({
-  lang: 'en',
+  lang: 'ko',
   setLang: (lang) => set({ lang }),
 }))
 
