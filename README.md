@@ -8,9 +8,14 @@
 > 미러 소스: [`PatrickVonMassow/Heart-of-Africa-Remake`](https://github.com/PatrickVonMassow/Heart-of-Africa-Remake) (MIT 라이선스)
 > 한국어 미러: [`sigco3111/heart-of-africa-korea`](https://github.com/sigco3111/heart-of-africa-korea)
 
+<p align="center">
+  <a href="https://sigco3111.github.io/heart-of-africa-korea/"><img alt="Live Demo" src="https://img.shields.io/badge/Live_Demo-GitHub%20Pages-222222?style=for-the-badge&logo=githubpages&logoColor=white" /></a>
+  <a href="https://github.com/sigco3111/heart-of-africa-korea"><img alt="GitHub" src="https://img.shields.io/badge/GitHub-sigco3111%2Fheart--of--africa--korea-181717?style=for-the-badge&logo=github" /></a>
+</p>
+
 ---
 
-## 🎮 라이브 데모
+## 🎮 라이브 데모 : https://sigco3111.github.io/heart-of-africa-korea/
 
 ### 🇰🇷 **한국어판**: <https://sigco3111.github.io/heart-of-africa-korea/>
 
@@ -232,7 +237,7 @@ heart-of-africa-korea/
 
 ### GitHub Pages (정식 단일 채널)
 
-- **프로덕션 URL**: <https://sigco3111.github.io/heart-of-africa-korea/>
+- **프로덕션 URL — 라이브 데모 :** <https://sigco3111.github.io/heart-of-africa-korea/>
 - 워크플로: [`.github/workflows/deploy-pages.yml`](./.github/workflows/deploy-pages.yml) — `actions/deploy-pages@v4`
 - 빌드 명령: `npm run build` (Vite, GitHub Actions 러너 ubuntu-latest)
 - 트리거: `main` 푸시 + `workflow_dispatch` (수동)
@@ -275,7 +280,7 @@ heart-of-africa-korea/
 
 ## 🔗 링크
 
-- 🌐 **한국어판 라이브 (GH-Pages)**: <https://sigco3111.github.io/heart-of-africa-korea/>
+- 🌐 **한국어판 라이브 (GitHub Pages)**: <https://sigco3111.github.io/heart-of-africa-korea/>
 - 🇬🇧 **원본 PoC**: <https://patrickvonmassow.github.io/Heart-of-Africa-Remake/poc/>
 - 💻 **원본 소스**: <https://github.com/PatrickVonMassow/Heart-of-Africa-Remake>
 - 💻 **한국어 미러**: <https://github.com/sigco3111/heart-of-africa-korea>
@@ -287,8 +292,8 @@ heart-of-africa-korea/
 
 ### 한국어 미러
 - **2026-08-11** — `sigco3111/heart-of-africa-korea` 생성, HTML lang/title 한국어화, 핵심 30+ 키 1차 교체, ko.ts 풀 번역 핸드오프 문서 작성
-- **2026-08-11** — **GH-Pages 활성화**: fork repo를 public으로 전환, `actions/deploy-pages@v4` 워크플로 활성화, `vite.config.ts`/`deploy-pages.yml`에 `GITHUB_PAGES_BASE` 환경변수 도입 (fork repo 이름에 맞는 base path 자동 주입), 첫 배포 성공. **정식 단일 배포 채널 = GH-Pages**.
-- **2026-08-11** — **Vercel 제거**: Vercel 프로젝트(`heart-of-africa-remake`) 영구 삭제, 로컬 `.vercel/` 정리, README/HANDOFF에서 Vercel 흔적 제거. GH-Pages가 유일한 배포 채널.
+- **2026-08-11** — **GitHub Pages 활성화**: fork repo를 public으로 전환, `actions/deploy-pages@v4` 워크플로 활성화, `vite.config.ts`/`deploy-pages.yml`에 `GITHUB_PAGES_BASE` 환경변수 도입 (fork repo 이름에 맞는 base path 자동 주입), 첫 배포 성공. **정식 단일 배포 채널 = GitHub Pages**.
+- **2026-08-11** — **배포 채널 통일**: 배포 산출물과 문서 흔적을 정리하고, GitHub Pages를 유일한 배포 채널로 유지.
 
 ### 원본
 Patrick VonMassow의 1인 프로젝트로 2026-08 기준 활발히 개발 중 (1일 10+ 커밋, 967 파일). 본 미러는 게임 디자인 결정에 일절 관여하지 않으며, 한국어 UI 작업만 수행합니다.

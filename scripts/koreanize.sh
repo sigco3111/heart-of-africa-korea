@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Heart of Africa Remake — Korean localization script
-# 메모리 08-10 클론+한글화+Vercel 풀파이프라인 절차.
+# 메모리 08-10 클론+한글화 배포 파이프라인 절차.
 # 1) index.html lang/title 한국어화
 # 2) src/i18n/ko.ts 생성 (en.ts 베이스 + Strings 계약 유지 + 한국어 키)
 # 3) src/i18n/index.ts 에 'ko' 추가 + 기본값 'ko' 로 변경
